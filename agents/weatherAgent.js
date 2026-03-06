@@ -1,4 +1,8 @@
 const axios = require('axios');
+const https = require('https');
+
+// Force IPv4 routing to bypass LXC container IPv6 connection drops
+const httpsAgent = new https.Agent({ family: 4 });
 
 // WMO Weather interpretation codes
 function getWeatherDescription(code) {
@@ -23,7 +27,9 @@ async function getWeather(city) {
   try {
     // 1. Geocoding API: Turn city name into Latitude/Longitude
     const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&format=json`;
-    const geoResponse = await axios.get(geoUrl, { timeout: 10000 });
+    
+    // Inject the HTTPS Agent to force IPv4
+    const geoResponse = await axios.get(geoUrl, { timeout: 10000, httpsAgent });
 
     if (!geoResponse.data.results || geoResponse.data.results.length === 0) {
         return `❌ Could not find location coordinates for "${city}".`;
@@ -36,7 +42,9 @@ async function getWeather(city) {
 
     // 2. Weather API: Fetch the actual weather for those coordinates
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code`;
-    const weatherResponse = await axios.get(weatherUrl, { timeout: 10000 });
+    
+    // Inject the HTTPS Agent to force IPv4
+    const weatherResponse = await axios.get(weatherUrl, { timeout: 10000, httpsAgent });
 
     const current = weatherResponse.data.current;
     const desc = getWeatherDescription(current.weather_code);

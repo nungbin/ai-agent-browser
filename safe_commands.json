@@ -1,0 +1,15 @@
+[
+  "pwd",
+  "ls",
+  "whoami",
+  "date",
+  "uptime",
+  "free",
+  "df",
+  "cat",
+  "echo",
+  "gcc",
+  "./",
+  "which",
+  "uname"
+]
