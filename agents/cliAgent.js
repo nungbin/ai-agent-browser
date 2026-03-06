@@ -1,22 +1,34 @@
-const util = require('util');
-const exec = util.promisify(require('child_process').exec);
+const { exec } = require('child_process');
 
 async function runCommand(command) {
-  try {
-    const { stdout, stderr } = await exec(command);
-    let out = stdout.trim() || stderr.trim() || "(Success: No output returned)";
-    
-    // Truncate if it's too long for Telegram
-    if (out.length > 3500) {
-      out = out.substring(0, 3500) + '\n...[TRUNCATED DUE TO LENGTH]';
-    }
-    
-    // Escape HTML to prevent Telegram 400 Bad Request errors
-    return out.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  } catch (err) {
-    const errorText = err.stderr || err.message;
-    return `Error:\n${errorText}`.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+    return new Promise((resolve, reject) => {
+        // Run the command with a 15-second timeout to prevent infinite hangs
+        exec(command, { timeout: 15000 }, (error, stdout, stderr) => {
+            let combinedOutput = '';
+
+            // 1. Capture the normal output
+            if (stdout) {
+                combinedOutput += stdout;
+            }
+
+            // 2. Capture the error warnings (this is what you missed!)
+            if (stderr) {
+                combinedOutput += `\n[STDERR Warning/Error]:\n${stderr}`;
+            }
+
+            // 3. Handle the actual crash/failure
+            if (error) {
+                if (!combinedOutput.trim()) {
+                    combinedOutput = error.message;
+                }
+                // Reject the promise so bot.js catches it as a red ❌ failure
+                return reject(new Error(combinedOutput.trim() || "Command failed silently."));
+            }
+
+            // 4. Handle commands that succeed but return completely blank text (like 'touch file.txt')
+            resolve(combinedOutput.trim() || "✅ Command executed successfully (No output returned).");
+        });
+    });
 }
 
 module.exports = { runCommand };
