@@ -1,0 +1,15 @@
+# Dependency directories
+node_modules/
+   
+# Secret Environment Variables
+.env
+   
+# Bot Memory (Don't version control active state)
+memory.json
+   
+# OS generated files
+.DS_Store
+Thumbs.db
+
+.vscode
+auth-profile
