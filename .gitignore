@@ -4,12 +4,16 @@ node_modules/
 # Secret Environment Variables
 .env
    
-# Bot Memory (Don't version control active state)
-memory.json
-   
+# Bot Memory, Safelists, and Prompts
+data/
+
+# Generated Files Testing Ground
+sandbox/
+
 # OS generated files
 .DS_Store
 Thumbs.db
 
 .vscode
-auth-profile
+auth-profile/
+

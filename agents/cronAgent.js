@@ -1,19 +1,17 @@
+// File: agents/cronAgent.js
 const cron = require('node-cron');
 const fs = require('fs').promises;
 const path = require('path');
 
 const CRON_FILE = path.join(__dirname, '../cron_jobs.json');
 
-// Memory stores
-let activeTasks = {}; // Stores the actual running node-cron instances
-let savedJobs = {};   // Stores the configuration for saving to disk
+let activeTasks = {}; 
+let savedJobs = {};   
 
 async function init(pipelineCallback) {
     try {
         const data = await fs.readFile(CRON_FILE, 'utf8');
         savedJobs = JSON.parse(data);
-        
-        // Restart all saved jobs on boot
         for (const [id, job] of Object.entries(savedJobs)) {
             startCronTask(id, job.cronExp, job.task, job.chatId, pipelineCallback);
         }
@@ -29,22 +27,14 @@ async function save() {
 }
 
 function startCronTask(id, cronExp, task, chatId, pipelineCallback) {
-    // Stop it if it's already running just in case
     if (activeTasks[id]) activeTasks[id].stop();
-    
-    activeTasks[id] = cron.schedule(cronExp, () => {
-        // Trigger the main bot pipeline exactly as if the user typed it
-        pipelineCallback(chatId, task, true); 
-    });
+    activeTasks[id] = cron.schedule(cronExp, () => pipelineCallback(chatId, task, true));
 }
 
 async function addJob(cronExp, task, chatId, pipelineCallback) {
-    // Validate the cron expression
-    if (!cron.validate(cronExp)) {
-        throw new Error(`Invalid cron expression: ${cronExp}`);
-    }
+    if (!cron.validate(cronExp)) throw new Error(`Invalid cron expression: ${cronExp}`);
 
-    const id = Date.now().toString().slice(-6); // Create a short 6-digit ID
+    const id = Date.now().toString().slice(-6); 
     savedJobs[id] = { cronExp, task, chatId };
     
     startCronTask(id, cronExp, task, chatId, pipelineCallback);
@@ -54,7 +44,6 @@ async function addJob(cronExp, task, chatId, pipelineCallback) {
 }
 
 async function removeJob(keyword) {
-    // Search by ID first
     if (savedJobs[keyword]) {
         activeTasks[keyword].stop();
         delete activeTasks[keyword];
@@ -63,7 +52,6 @@ async function removeJob(keyword) {
         return `✅ Job <b>#${keyword}</b> removed successfully.`;
     }
 
-    // Search by task description (fuzzy match)
     for (const [id, job] of Object.entries(savedJobs)) {
         if (job.task.toLowerCase().includes(keyword.toLowerCase())) {
             activeTasks[id].stop();
@@ -73,7 +61,6 @@ async function removeJob(keyword) {
             return `✅ Cancelled job <b>#${id}</b> ("${job.task}").`;
         }
     }
-
     return `❌ Could not find a job matching "<b>${keyword}</b>". Use /jobs to see active IDs.`;
 }
 

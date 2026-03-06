@@ -1,7 +1,19 @@
+// File: bot.js
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const path = require('path');
 const fs = require('fs').promises;
+
+// ==========================================
+// 0. GLOBAL ERROR HANDLERS (Anti-Crash)
+// ==========================================
+process.on('uncaughtException', (err) => {
+    console.error('🔥 [CRITICAL] Uncaught Exception:', err.message);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️ [NETWORK] Unhandled Rejection:', reason.message || reason);
+});
 
 // Import Sub-Agents
 const newsAgent = require('./agents/newsAgent');
@@ -10,18 +22,30 @@ const weatherAgent = require('./agents/weatherAgent');
 const sheetsAgent = require('./agents/sheetsAgent');
 const voiceAgent = require('./agents/voiceAgent');
 const cronAgent = require('./agents/cronAgent'); 
+const sapAgent = require('./agents/sapAgent');
 
 // ==========================================
-// 1. DEBUG ENGINE
+// 1. DIRECTORY SETUP & DEBUG ENGINE
 // ==========================================
+const DATA_DIR = path.join(__dirname, 'data');
+const SANDBOX_DIR = path.join(__dirname, 'sandbox'); 
+const PROMPT_FILE = path.join(DATA_DIR, 'system_prompt.txt');
+
+async function initDirectories() {
+    try { 
+        await fs.mkdir(DATA_DIR, { recursive: true }); 
+        await fs.mkdir(SANDBOX_DIR, { recursive: true });
+    } 
+    catch (err) { console.error("Failed to create necessary directories", err); }
+}
+initDirectories();
+
 const isDebug = process.argv.includes('--debug') || process.argv.includes('-d');
 
 function debugLog(label, data = '') {
   if (isDebug) {
     console.log(`\n[DEBUG] === ${label} ===`);
-    if (data) {
-      console.log(typeof data === 'object' ? JSON.stringify(data, null, 2) : data);
-    }
+    if (data) console.log(typeof data === 'object' ? JSON.stringify(data, null, 2) : data);
   }
 }
 
@@ -32,9 +56,8 @@ if (isDebug) console.log('⚠️ DEBUG MODE ACTIVATED: Verbose logging enabled.'
 // ==========================================
 const token = process.env.TELEGRAM_TOKEN;
 const OLLAMA_URL = `http://${process.env.OLLAMA_IP}:11434/api/generate`;
-
 const MEMORY_LIMIT = parseInt(process.env.MEMORY_LIMIT, 10) || 30;
-const CORE_MODEL = 'qwen3.5:4b';  
+const CORE_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';  
 
 if (!token) {
   console.error('FATAL ERROR: TELEGRAM_TOKEN is missing from .env file.');
@@ -44,8 +67,7 @@ if (!token) {
 const bot = new TelegramBot(token, { polling: true });
 const pendingCommands = new Map();
 
-// --- DYNAMIC SAFE COMMANDS ---
-const SAFE_FILE = path.join(__dirname, 'safe_commands.json');
+const SAFE_FILE = path.join(DATA_DIR, 'safe_commands.json');
 let safeCommands = [];
 
 async function loadSafeCommands() {
@@ -54,7 +76,6 @@ async function loadSafeCommands() {
         safeCommands = JSON.parse(data);
         console.log(`🛡️ Safe Commands Loaded: ${safeCommands.length} authorized.`);
     } catch (e) {
-        // Defaults if file doesn't exist yet
         safeCommands = ['pwd', 'ls', 'whoami', 'date', 'uptime', 'free', 'df', 'cat', 'echo', 'gcc', './', 'which', 'uname'];
         await fs.writeFile(SAFE_FILE, JSON.stringify(safeCommands, null, 2));
         console.log('🛡️ Created new safe_commands.json file with defaults.');
@@ -69,7 +90,7 @@ async function saveSafeCommands() {
 // ==========================================
 // 3. PERSISTENT MEMORY & CRON INIT
 // ==========================================
-const MEMORY_FILE = path.join(__dirname, 'memory.json');
+const MEMORY_FILE = path.join(DATA_DIR, 'memory.json');
 let chatMemory = new Map();
 
 async function initMemory() {
@@ -83,7 +104,6 @@ async function initMemory() {
 }
 initMemory();
 
-// Initialize Cron Agent and pass it the pipeline execution function
 cronAgent.init((chatId, task, isCron) => processPipeline(chatId, task, isCron));
 
 function persistMemory() {
@@ -98,10 +118,7 @@ function saveToMemory(chatId, role, text) {
   const history = chatMemory.get(idStr);
   
   history.push({ role, text });
-  
-  if (history.length > MEMORY_LIMIT) {
-      history.splice(0, history.length - MEMORY_LIMIT);
-  }
+  if (history.length > MEMORY_LIMIT) history.splice(0, history.length - MEMORY_LIMIT);
   
   persistMemory();
 }
@@ -151,7 +168,8 @@ async function callOllama(modelName, promptText, expectJson = false) {
   const payload = {
     model: modelName,
     prompt: promptText,
-    stream: false
+    stream: false,
+    keep_alive: -1
   };
   if (expectJson) payload.format = 'json';
 
@@ -165,23 +183,20 @@ async function callOllama(modelName, promptText, expectJson = false) {
   if (data.error) throw new Error(`Ollama API Error (${modelName}): ${data.error}`);
 
   let rawContent = data.response;
-  if ((!rawContent || rawContent.trim() === '') && data.thinking) {
-    rawContent = data.thinking;
-  }
-  if (!rawContent || rawContent.trim() === '') {
-    throw new Error(`Invalid API Response from ${modelName}`);
-  }
+  if ((!rawContent || rawContent.trim() === '') && data.thinking) rawContent = data.thinking;
+  if (!rawContent || rawContent.trim() === '') throw new Error(`Invalid API Response from ${modelName}`);
+  
   return rawContent.trim();
 }
 
 // ==========================================
-// 6. HARDCODED COMMANDS (SAFE LIST & CRON)
+// 6. HARDCODED COMMANDS
 // ==========================================
 bot.onText(/\/start|\/help/, (msg) => {
   const helpText = `🤖 <b>Agentic AI Online:</b>
 /help - Show this list
-/files - List directory files
-/read [filename] - Read a file
+/files - List Sandbox files
+/read [filename] - Read a Sandbox file
 /clear - Wipe memory
 /safe - View auto-execute whitelist
 /allow [cmd] - Add to whitelist
@@ -209,14 +224,20 @@ bot.onText(/\/allow (.+)/, async (msg, match) => {
       safeCommands.push(cmd);
       await saveSafeCommands();
       bot.sendMessage(msg.chat.id, `✅ <b>Added:</b> <code>${cmd}</code> will now auto-execute without approval.`, { parse_mode: 'HTML' }).catch(() => {});
+  } else {
+      bot.sendMessage(msg.chat.id, `ℹ️ <code>${cmd}</code> is already on the safe list.`, { parse_mode: 'HTML' }).catch(() => {});
   }
 });
 
 bot.onText(/\/deny (.+)/, async (msg, match) => {
   const cmd = match[1].trim();
-  safeCommands = safeCommands.filter(c => c !== cmd);
-  await saveSafeCommands();
-  bot.sendMessage(msg.chat.id, `🚫 <b>Removed:</b> <code>${cmd}</code> now requires manual approval.`, { parse_mode: 'HTML' }).catch(() => {});
+  if (safeCommands.includes(cmd)) {
+      safeCommands = safeCommands.filter(c => c !== cmd);
+      await saveSafeCommands();
+      bot.sendMessage(msg.chat.id, `🚫 <b>Removed:</b> <code>${cmd}</code> now requires manual approval.`, { parse_mode: 'HTML' }).catch(() => {});
+  } else {
+      bot.sendMessage(msg.chat.id, `ℹ️ <code>${cmd}</code> was not on the safe list.`, { parse_mode: 'HTML' }).catch(() => {});
+  }
 });
 
 bot.onText(/\/jobs/, (msg) => {
@@ -226,6 +247,33 @@ bot.onText(/\/jobs/, (msg) => {
 bot.onText(/\/removejob (.+)/, async (msg, match) => {
   const result = await cronAgent.removeJob(match[1].trim());
   bot.sendMessage(msg.chat.id, result, { parse_mode: 'HTML' }).catch(() => {});
+});
+
+bot.onText(/\/files/, async (msg) => {
+  try {
+    const allFiles = await fs.readdir(SANDBOX_DIR);
+    const visibleFiles = allFiles.filter(file => !file.startsWith('.'));
+    if (visibleFiles.length === 0) return bot.sendMessage(msg.chat.id, '📂 Sandbox is empty.').catch(() => {});
+    bot.sendMessage(msg.chat.id, `📂 <b>Sandbox Files:</b>\n<pre>${visibleFiles.join('\n')}</pre>`, { parse_mode: 'HTML' }).catch(() => {});
+  } catch (err) {
+    bot.sendMessage(msg.chat.id, '❌ Could not read Sandbox directory.').catch(() => {});
+  }
+});
+
+bot.onText(/\/read (.+)/, async (msg, match) => {
+  const fileName = match[1].trim();
+  if (fileName.startsWith('.') || fileName.includes('..') || fileName.includes('/')) {
+    return bot.sendMessage(msg.chat.id, '🚫 Access Denied. Cannot escape sandbox.').catch(() => {});
+  }
+  try {
+    const filePath = path.join(SANDBOX_DIR, fileName);
+    let content = await fs.readFile(filePath, 'utf8');
+    if (content.length > 3500) content = content.substring(0, 3500) + '\n... [TRUNCATED]';
+    const safeContent = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    bot.sendMessage(msg.chat.id, `📄 <b>${fileName} (Sandbox):</b>\n<pre>${safeContent}</pre>`, { parse_mode: 'HTML' }).catch(() => {});
+  } catch (err) {
+    bot.sendMessage(msg.chat.id, `❌ Could not read file in Sandbox: ${fileName}`).catch(() => {});
+  }
 });
 
 // ==========================================
@@ -247,45 +295,16 @@ async function processPipeline(chatId, userText, isCron = false) {
   if (!isCron) thinkingProgress = await startProgressBar(chatId, `🧠 Processing Request...`);
 
   try {
-    const routerPrompt = `
-      You are an advanced AI assistant, intent router, and Linux system administrator. You control a real server.
-      
-      CONVERSATION HISTORY:
-      ${conversationHistory}
-      
-      CURRENT MESSAGE: "${userText}"
+    let promptTemplate;
+    try {
+        promptTemplate = await fs.readFile(PROMPT_FILE, 'utf8');
+    } catch (e) {
+        throw new Error("Missing system_prompt.txt! Please create it inside the data/ directory.");
+    }
 
-      Classify the message into exactly ONE of these intents:
-      - "cli": Run a Linux command. Output exactly ONE bash command.
-      - "write_file": Create a file. Output the code. Needs "filename" key.
-      - "weather": Fetch weather. Output ONLY city name.
-      - "sheets": Log data to Google Sheets. Output the data string.
-      - "news": Fetch the news. Output MUST BE "fetching news".
-      - "schedule": Schedule a recurring task. Output MUST include "cron" (a valid 5-part cron expression like "0 8 * * *") and "output" (the task description to run).
-      - "unschedule": Stop a scheduled task. Output the ID or task keyword.
-      - "chat": A general question requiring an explanation.
-      - "clarify": Missing information (like a city for the weather).
-
-      CRITICAL RULES:
-      1. EXACT SCHEMA: You MUST include the "output" key in your JSON. Do not use "city", "command", or "query". Use "output".
-      2. SCHEDULING: If intent is "schedule", include a "cron" key with standard cron syntax.
-      3. SYSTEM STATE: If asked about the server (RAM, disk space), use the 'cli' intent (e.g., 'free -h', 'df -h').
-
-      EXAMPLES:
-      User: "what's the weather in Edmonton"
-      Response: {"intent": "weather", "output": "Edmonton"}
-
-      User: "Send me the weather in Tokyo every morning at 8 AM"
-      Response: {"intent": "schedule", "cron": "0 8 * * *", "output": "what's the weather in tokyo"}
-
-      User: "cancel the weather schedule"
-      Response: {"intent": "unschedule", "output": "weather"}
-
-      User: "what's the weather"
-      Response: {"intent": "clarify", "output": "For which city would you like to know the weather?"}
-
-      Respond in strict JSON format ONLY.
-    `;
+    const routerPrompt = promptTemplate
+        .replace('{{CONVERSATION_HISTORY}}', conversationHistory)
+        .replace('{{USER_MESSAGE}}', userText);
 
     const rawJsonResponse = await callOllama(CORE_MODEL, routerPrompt, true);
     debugLog(`Output from [${CORE_MODEL}]`, rawJsonResponse);
@@ -302,8 +321,6 @@ async function processPipeline(chatId, userText, isCron = false) {
         bot.deleteMessage(chatId, thinkingProgress.messageId).catch(() => {});
     }
 
-    // === BUG FIX: EXTENDED ALIAS CATCHER ===
-    // If the LLM hallucinates a key, we catch it here so it doesn't fail.
     let output = routerDecision.output || routerDecision.text || routerDecision.city || routerDecision.command || routerDecision.query || routerDecision.task || routerDecision.action || '';
     
     let intent = routerDecision.intent ? String(routerDecision.intent).toLowerCase() : 'chat';
@@ -316,6 +333,8 @@ async function processPipeline(chatId, userText, isCron = false) {
       if (intent === 'weather') {
           output = "For which city would you like to know the weather?";
           intent = 'clarify';
+      } else if (intent === 'cli') {
+          output = userText.replace(/^(run|execute|type|bash|command|sudo|compile)\s+/i, '').trim();
       } else {
           output = "I don't have enough information.";
           intent = 'chat';
@@ -325,19 +344,36 @@ async function processPipeline(chatId, userText, isCron = false) {
     // ---------------------------------------------------------
     // EXECUTION BLOCK
     // ---------------------------------------------------------
+    if (intent === 'sap') {
+        const progress = await startProgressBar(chatId, 'Connecting to SAP...');
+        try {
+            const sapData = await sapAgent.querySap(output);
+            debugLog('SAP Execution Success', sapData);
+            clearInterval(progress.intervalId);
+            return bot.editMessageText(sapData, { chat_id: chatId, message_id: progress.messageId, parse_mode: 'HTML' }).catch(() => {});
+        } catch (e) {
+            debugLog('SAP Execution Error', e.message);
+            clearInterval(progress.intervalId);
+            return bot.editMessageText(`❌ <b>SAP Error:</b>\n<pre>${e.message}</pre>`, { chat_id: chatId, message_id: progress.messageId, parse_mode: 'HTML' }).catch(() => {});
+        }
+    }
+
     if (intent === 'schedule') {
         const cronExp = routerDecision.cron;
         try {
             const id = await cronAgent.addJob(cronExp, output, chatId, processPipeline);
+            debugLog('Cron Scheduled Success', `ID: ${id}`);
             saveToMemory(chatId, 'Assistant', `Scheduled task #${id}`);
             return bot.sendMessage(chatId, `⏰ <b>Scheduled Successfully!</b>\n<b>ID:</b> <code>${id}</code>\n<b>Cron:</b> <pre>${cronExp}</pre>\n<b>Task:</b> ${output}`, { parse_mode: 'HTML' }).catch(() => {});
         } catch (e) {
+            debugLog('Cron Scheduled Error', e.message);
             return bot.sendMessage(chatId, `❌ <b>Failed to schedule:</b> ${e.message}`, { parse_mode: 'HTML' }).catch(() => {});
         }
     }
 
     if (intent === 'unschedule') {
         const result = await cronAgent.removeJob(output);
+        debugLog('Cron Unscheduled', result);
         saveToMemory(chatId, 'Assistant', result);
         return bot.sendMessage(chatId, result, { parse_mode: 'HTML' }).catch(() => {});
     }
@@ -349,10 +385,30 @@ async function processPipeline(chatId, userText, isCron = false) {
 
     if (intent === 'write_file') {
         const filename = routerDecision.filename || 'snippet.txt';
-        const filePath = path.join(__dirname, filename);
-        await fs.writeFile(filePath, output, 'utf8');
-        let safeContent = output.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        return bot.sendMessage(chatId, `💾 <b>File Created:</b> <code>${filename}</code>\n<pre>${safeContent}</pre>`, { parse_mode: 'HTML' }).catch(() => {});
+        const filePath = path.join(SANDBOX_DIR, filename);
+        
+        // --- NEW: Sanitize LLM Output ---
+        let fileContent = output;
+        if (fileContent.includes('```')) {
+            // Extract the block if wrapped in markdown
+            const match = fileContent.match(/```[a-zA-Z]*\n?([\s\S]*?)```/);
+            if (match && match[1]) {
+                fileContent = match[1].trim();
+            }
+        } else {
+            // Failsafe: 4B model forgot backticks and prepended English text
+            // Hunt for the first line that looks like real code (C, Python, JS, etc.)
+            const codeStartRegex = /^[ \t]*(#include|import|def\s|class\s|int\s|void\s|function\s|const\s|let\s|var\s|\/\/|\/\*)/m;
+            const match = fileContent.match(codeStartRegex);
+            if (match) {
+                fileContent = fileContent.substring(match.index).trim();
+            }
+        }
+
+        await fs.writeFile(filePath, fileContent, 'utf8');
+        let safeContent = fileContent.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        debugLog('File Written', `sandbox/${filename}`);
+        return bot.sendMessage(chatId, `💾 <b>File Created:</b> <code>sandbox/${filename}</code>\n<pre>${safeContent}</pre>`, { parse_mode: 'HTML' }).catch(() => {});
     }
 
     if (intent === 'news') {
@@ -362,6 +418,7 @@ async function processPipeline(chatId, userText, isCron = false) {
 
     if (intent === 'weather') {
       const weatherData = await weatherAgent.getWeather(output);
+      debugLog('Weather Success', weatherData);
       return bot.sendMessage(chatId, weatherData, { parse_mode: 'HTML' }).catch(() => {});
     }
 
@@ -372,9 +429,11 @@ async function processPipeline(chatId, userText, isCron = false) {
         if (!isCron) await bot.sendMessage(chatId, `⚙️ <b>Auto-executing:</b> <pre>${output}</pre>`, { parse_mode: 'HTML' }).catch(() => {});
         try {
           const result = await cliAgent.runCommand(output);
+          debugLog('CLI Execution Success', result); // <--- LOGS SUCCESSFUL CLI TO CONSOLE
           let safeResult = result.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
           return bot.sendMessage(chatId, `✅ <b>Result:</b>\n<pre>${safeResult}</pre>`, { parse_mode: 'HTML' }).catch(() => {});
         } catch (error) {
+          debugLog('CLI Execution Error', error.message); // <--- LOGS STDERR TO CONSOLE
           return bot.sendMessage(chatId, `❌ <b>Failed:</b>\n<pre>${error.message}</pre>`, { parse_mode: 'HTML' }).catch(() => {});
         }
       } else {
@@ -390,6 +449,7 @@ async function processPipeline(chatId, userText, isCron = false) {
         clearInterval(thinkingProgress.intervalId);
         bot.deleteMessage(chatId, thinkingProgress.messageId).catch(() => {});
     }
+    debugLog('Pipeline Critical Error', error.message);
     bot.sendMessage(chatId, `❌ <b>Pipeline Error:</b>\n<pre>${error.message}</pre>`, { parse_mode: 'HTML' }).catch(() => {});
   }
 }
@@ -414,9 +474,11 @@ bot.on('callback_query', async (query) => {
     
     try {
       const result = await cliAgent.runCommand(cmd);
+      debugLog('CLI Manual Execution Success', result); // <--- LOGS SUCCESS TO CONSOLE
       let safeResult = result.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       bot.editMessageText(`✅ <b>Complete:</b>\n<pre>${cmd}</pre>\n<b>Output:</b>\n<pre>${safeResult}</pre>`, { chat_id: chatId, message_id: msgId, parse_mode: 'HTML' }).catch(() => {});
     } catch (error) {
+      debugLog('CLI Manual Execution Error', error.message); // <--- LOGS STDERR TO CONSOLE
       bot.editMessageText(`❌ <b>Failed:</b>\n<pre>${cmd}</pre>\n<b>Error:</b>\n<pre>${error.message}</pre>`, { chat_id: chatId, message_id: msgId, parse_mode: 'HTML' }).catch(() => {});
     }
     pendingCommands.delete(cmdId);
