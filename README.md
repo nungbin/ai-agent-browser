@@ -1,118 +1,77 @@
-🤖 Telegram Agentic AI & SAP Middleware
+🤖 Agentic AI Coder & SAP Controller
 
-A powerful, self-hosted Telegram bot powered by Ollama and local Large Language Models (like Qwen 3.5). This is not just a chatbot—it is an Autonomous System Administrator and Enterprise SAP Middleware.
+An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a C/Python Coder, and a Remote SAP GUI Controller.
 
-Using an advanced Agentic Intent Router, the bot understands natural language, corrects typos, and delegates complex tasks to a suite of specialized sub-agents.
+🚀 Core Capabilities
 
-✨ Key Features
+Sandbox Coding: All generated files (.c, .py, .txt) are isolated in the sandbox/ folder.
 
-🧠 Local AI Brain: Powered entirely locally via Ollama, ensuring zero data leakage to third-party APIs.
+Stateful CLI: The bot tracks its Current Working Directory (CWD). If you cd sandbox, it stays there for subsequent commands.
 
-💼 SAP "Cold Start" Automation: Remotely wakes up a Windows host via SSH, launches SAP GUI, injects credentials, scrapes legacy ALV grids (like ST22 dumps), and safely logs out. Also supports seamless fallback to node-rfc or OData REST APIs.
+AI Cold-Start Fix: Uses keep_alive: -1 to keep the LLM in VRAM for instant responses.
 
-⏰ Natural Language Cron: Tell the bot to "Check SAP for ST22 dumps every morning at 8 AM" and it will autonomously write the cron expression, schedule the job, and message you the results.
+Hybrid SAP Control: - GUI Mode: Triggered when a T-Code is detected. Uses SSH + Windows Task Scheduler + VBScript to pop a visible SAP window.
 
-💻 Secure CLI Execution: Safely execute Linux bash commands on your host server. Features a dynamic "Safelist" configurable directly from Telegram (/allow, /deny) to bypass manual approvals for trusted commands.
+RFC Mode: Triggered for general SAP queries without a T-Code. (Placeholder for headless data fetching).
 
-⛅ Weather & 📰 News Agents: Geocoding-powered weather updates and real-time Hacker News scraping built right in.
+🛠️ Remote SAP Setup (Windows Host)
 
-💾 Persistent Memory: Remembers conversation history and scheduled cron jobs across server reboots.
+To enable the bot to control SAP GUI visibly on a Windows machine, you need to set up the remote listener scripts provided in this repository.
 
-🏗️ Architecture
+Copy the Master Script:
 
-Linux LXC Host: Runs the core Node.js bot, Ollama LLM, and internet-facing sub-agents (News, Weather).
+Take the sap_master.vbs file from the Windows_Script/ folder in this repository.
 
-Windows GUI Slave: An optional Windows machine connected via OpenSSH. Used exclusively by the sapAgent.js to execute pywin32 scripts for driving legacy SAP GUI transactions.
+Copy it to your Windows machine and place it at: C:\SAP_Bots\sap_master.vbs
 
-🛠️ Prerequisites
+Create the Script Library:
 
-Node.js (v18 or higher)
+On the Windows machine, create an empty folder at C:\SAP_Bots\scripts\.
 
-Ollama running locally (ollama pull qwen3.5:4b)
+(You can save recorded SAP GUI VBScripts here named after their T-Codes, e.g., ST22.vbs, and the master script will automatically run them!)
 
-A Telegram Bot Token (from @BotFather)
+Create the Windows Scheduled Task:
 
-(Optional) Windows PC with SAP Logon and OpenSSH Server installed.
+Open Task Scheduler on Windows and create a new task named LaunchSAP_NPL.
 
-🚀 Installation & Setup
+Security Options: Check "Run only when user is logged on" (This is critical to bypass Session 0 isolation and make the GUI visible).
 
-Clone the repository:
+Actions: Start a program
 
-git clone [https://github.com/YourUsername/telegram-ai-agent.git](https://github.com/YourUsername/telegram-ai-agent.git)
-cd telegram-ai-agent
+Program/script: wscript.exe
+
+Add arguments: "C:\SAP_Bots\sap_master.vbs"
+
+📥 Installation (Linux LXC / Host)
+
+Clone this repository and install dependencies:
+
+npm install
 
 
-Install dependencies:
+Create a .env file in the root directory and configure it:
 
-npm install node-telegram-bot-api dotenv axios node-cron
-
-
-(If using the SAP RFC agent, also install node-rfc)
-
-Configure Environment Variables:
-Create a .env file in the root directory (use the template below):
-
-# ==========================================
-# 1. CORE TELEGRAM & MEMORY CONFIG
-# ==========================================
-TELEGRAM_TOKEN=your_telegram_bot_token_here
-MEMORY_LIMIT=30
-
-# ==========================================
-# 2. LOCAL AI / OLLAMA CONFIG
-# ==========================================
-OLLAMA_IP=127.0.0.1
+# Telegram Config
+TELEGRAM_TOKEN=your_telegram_bot_token
+OLLAMA_IP=192.168.1.105
 OLLAMA_MODEL=qwen3.5:4b
 
-# ==========================================
-# 3. WINDOWS HOST CONFIG (For SAP GUI Automation)
-# ==========================================
-WINDOWS_IP=192.168.1.100
-WINDOWS_USER=Administrator
+# Remote Windows Host (Where SAP GUI is installed)
+WINDOWS_HOST=192.168.1.116
+WINDOWS_USER=hpa6
 
-# ==========================================
-# 4. SAP CREDENTIALS (Cold Start Injection)
-# ==========================================
-SAP_SYSTEM_NAME="PRD [Production]"
-SAP_CLIENT=100
-SAP_USER=your_sap_username
-SAP_PASS=your_super_secret_password
+# SAP System Credentials
+SAP_SYSTEM=NPL
+SAP_CLIENT=001
+SAP_USER=bshu
+SAP_PASSWORD=your_actual_password
 
 
-Start the Bot:
+Ensure you have SSH Key-Based Authentication set up between your Linux machine and the Windows Host (so the bot doesn't get stuck waiting for a password prompt).
 
-node bot.js
+Start the bot:
 
-# Or, to run with verbose reasoning logs:
 node bot.js --debug
 
 
-🗣️ Usage & Commands
-
-Hardcoded Commands:
-
-/safe - View the current auto-execute CLI whitelist.
-
-/allow [cmd] - Add a command to the whitelist (e.g., /allow git).
-
-/deny [cmd] - Remove a command from the whitelist.
-
-/jobs - View scheduled cron tasks and their IDs.
-
-/removejob [id] - Delete a scheduled cron task.
-
-/clear - Wipe conversation memory.
-
-/files - List files in the current directory.
-
-/read [filename] - Securely read a text file.
-
-Natural Language Examples (Just type them!):
-
-"Compile hello.c into an executable called hello"
-
-"Send me the tech news every Friday at 5 PM."
-
-"Run a health check on SAP."
-
-"What's the weather in Tokyo?"
+(Note: The bot includes an Ollama health check on startup to verify the LLM is loaded into VRAM before accepting messages).

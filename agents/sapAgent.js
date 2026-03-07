@@ -1,67 +1,62 @@
 // File: agents/sapAgent.js
-require('dotenv').config();
 const { exec } = require('child_process');
-const axios = require('axios');
-// const noderfc = require('node-rfc'); 
+const util = require('util');
+const execPromise = util.promisify(exec);
 
-// === PULL CREDENTIALS FROM .ENV ===
-const { 
-    WINDOWS_IP, 
-    WINDOWS_USER, 
-    SAP_SYSTEM_NAME, 
-    SAP_CLIENT, 
-    SAP_USER, 
-    SAP_PASS 
-} = process.env;
+/**
+ * Routes SAP requests to either GUI (T-Code) or RFC (Data)
+ * @param {string} output - The T-Code or Search Query
+ * @param {string} action - "gui" or "rfc"
+ */
+async function querySap(output, action = "gui") {
+    const winIp = process.env.WINDOWS_HOST;
+    const winUser = process.env.WINDOWS_USER;
+    const sapSys = process.env.SAP_SYSTEM || "NPL";
+    const sapClient = process.env.SAP_CLIENT || "001";
+    const sapUser = process.env.SAP_USER;
+    const sapPass = process.env.SAP_PASSWORD;
 
-const SAP_ROUTING_TABLE = {
-    "st22": {
-        method: "GUI_SCRIPTING",
-        scriptPath: "C:\\sap_scripts\\sap_gui_scraper.py",
-        pythonPath: "python" 
-    },
-    "health_check": {
-        method: "GUI_SCRIPTING",
-        scriptPath: "C:\\sap_scripts\\sap_gui_scraper.py",
-        pythonPath: "python"
-    },
-    "get_users": {
-        method: "RFC",
-        bapiName: "BAPI_USER_GETLIST"
+    if (action === "rfc") {
+        console.log(`[SAP-RFC] Headless query for: ${output}`);
+        return `🛰️ <b>SAP RFC Mode Triggered</b>\n` +
+               `<b>Target:</b> ${sapSys} Client ${sapClient}\n` +
+               `<b>Request:</b> <i>${output}</i>\n\n` +
+               `⚠️ <i>Note: Headless data retrieval (RFC) is currently in simulation mode. No GUI will open.</i>`;
     }
-};
 
-async function querySap(taskName) {
-    const route = SAP_ROUTING_TABLE[taskName.toLowerCase()];
+    // --- GUI Logic (T-Code) ---
+    // SMART ERROR CHECKING
+    const missingVars = [];
+    if (!winIp) missingVars.push("WINDOWS_HOST");
+    if (!winUser) missingVars.push("WINDOWS_USER");
+    if (!sapUser) missingVars.push("SAP_USER");
+    if (!sapPass) missingVars.push("SAP_PASSWORD");
 
-    if (!route) throw new Error(`I don't have a configured route for SAP task: "${taskName}"`);
-    console.log(`[SAP Agent] Routing task '${taskName}' via ${route.method}...`);
-
-    switch (route.method) {
-        case "GUI_SCRIPTING":
-            return await runGuiScriptOverSsh(route, taskName);
-        case "RFC":
-            return await runRfcCall(route);
-        default:
-            throw new Error(`Unknown routing method: ${route.method}`);
+    if (missingVars.length > 0) {
+        throw new Error(`Missing the following variables in your .env file: <b>${missingVars.join(', ')}</b>`);
     }
-}
 
-async function runGuiScriptOverSsh(route, taskName) {
-    return new Promise((resolve, reject) => {
-        // Cold Start Injection: Passing variables straight from the .env into the Windows Python script
-        const sshCommand = `ssh -o StrictHostKeyChecking=no ${WINDOWS_USER}@${WINDOWS_IP} "${route.pythonPath} ${route.scriptPath} ${taskName} \\"${SAP_SYSTEM_NAME}\\" ${SAP_CLIENT} ${SAP_USER} \\"${SAP_PASS}\\""`;
+    try {
+        const tcode = output.toUpperCase();
+        const payload = `${sapSys}|${sapClient}|${sapUser}|${sapPass}|${tcode}`;
 
-        exec(sshCommand, { timeout: 45000 }, (error, stdout, stderr) => {
-            if (error) return reject(new Error(`SSH GUI Execution Failed: ${stderr || error.message}`));
-            if (stdout.includes("ERROR:")) return reject(new Error(stdout.trim()));
-            resolve(`🖥️ **SAP GUI Script Execution:**\n<pre>${stdout.trim()}</pre>`);
-        });
-    });
-}
+        // Drop Payload
+        const dropPayloadCmd = `ssh ${winUser}@${winIp} 'echo "${payload}" > C:\\SAP_Bots\\payload.txt'`;
+        console.log(`[SAP] Executing: ${dropPayloadCmd}`);
+        await execPromise(dropPayloadCmd);
 
-async function runRfcCall(route) {
-    return `🔌 **SAP RFC Execution:**\nSuccessfully called ${route.bapiName} (Mocked Data).`;
+        // Trigger Task
+        const triggerTaskCmd = `ssh ${winUser}@${winIp} 'schtasks /run /tn "LaunchSAP_NPL"'`;
+        console.log(`[SAP] Executing: ${triggerTaskCmd}`);
+        await execPromise(triggerTaskCmd);
+
+        return `🚀 <b>SAP GUI Invoked (Remote Windows)</b>\n` +
+               `<b>System:</b> ${sapSys} (${sapClient})\n` +
+               `<b>T-Code:</b> <code>${tcode}</code>\n\n` +
+               `<i>Visible window opened on Windows monitor.</i>`;
+    } catch (error) {
+        throw new Error(`GUI Invocation Failed: ${error.message}`);
+    }
 }
 
 module.exports = { querySap };
