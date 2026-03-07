@@ -7,13 +7,13 @@ const OLLAMA_IP = process.env.OLLAMA_IP || '127.0.0.1';
 const CORE_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const OLLAMA_URL = `http://${OLLAMA_IP}:11434/api/generate`;
 
-// Define the tests
+// Define the tests (Notice the new expectedFilename check!)
 const testCases = [
     { prompt: "get me news", expectedIntent: "news" },
     { prompt: "what is the weather in London", expectedIntent: "weather" },
     { prompt: "Check ST22 in SAP", expectedIntent: "sap" },
     { prompt: "run pwd", expectedIntent: "cli" },
-    { prompt: "write a python script that prints hello world", expectedIntent: "write_file" },
+    { prompt: "write a python script named hello.py that prints hello world", expectedIntent: "write_file", expectedFilename: "hello.py" },
     { prompt: "read the latest row from my google sheet", expectedIntent: "sheets" },
     { prompt: "how are you doing today?", expectedIntent: "chat" }
 ];
@@ -30,13 +30,9 @@ async function loadDynamicPrompt() {
             try {
                 const mdContent = await fs.readFile(mdPath, 'utf8');
                 dynamicPromptAdditions += `\n${mdContent.trim()}\n`;
-            } catch (e) {
-                // Ignore folders without skill.md
-            }
+            } catch (e) { }
         }
-    } catch(e) {
-        console.error("Failed to read skills directory:", e);
-    }
+    } catch(e) { console.error("Failed to read skills directory:", e); }
     
     const basePromptPath = path.join(__dirname, '..', 'prompts', 'system_prompt.txt');
     const promptTemplate = await fs.readFile(basePromptPath, 'utf8');
@@ -46,21 +42,13 @@ async function loadDynamicPrompt() {
 
 async function testOllama() {
     console.log(`\n🧪 Starting Router Regression Test against ${CORE_MODEL}\n`);
-    
     let basePrompt;
-    try {
-        basePrompt = await loadDynamicPrompt();
-    } catch (error) {
-        console.error("❌ Failed to build prompt:", error);
-        return;
-    }
+    try { basePrompt = await loadDynamicPrompt(); } catch (error) { return console.error("❌ Failed to build prompt:", error); }
 
     let passed = 0;
     
     for (const test of testCases) {
         process.stdout.write(`Testing: "${test.prompt}"... `);
-        
-        // Inject conversation history (empty) and user message
         const finalPrompt = basePrompt
             .replace('{{CONVERSATION_HISTORY}}', 'No prior context.')
             .replace('{{USER_MESSAGE}}', test.prompt);
@@ -69,18 +57,12 @@ async function testOllama() {
             const res = await fetch(OLLAMA_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    model: CORE_MODEL, 
-                    prompt: finalPrompt, 
-                    stream: false,
-                    format: 'json'
-                })
+                body: JSON.stringify({ model: CORE_MODEL, prompt: finalPrompt, stream: false, format: 'json' })
             });
             
             const data = await res.json();
             let rawStr = data.response || data.thinking || "";
             
-            // Clean JSON
             let cleanStr = rawStr.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json|```/gi, '').trim();
             const firstBrace = cleanStr.indexOf('{');
             const lastBrace = cleanStr.lastIndexOf('}');
@@ -90,8 +72,13 @@ async function testOllama() {
             const parsed = JSON.parse(cleanStr);
             
             if (parsed.intent === test.expectedIntent) {
-                console.log(`✅ PASS (Intent: ${parsed.intent})`);
-                passed++;
+                // If the test expects a specific filename, check it!
+                if (test.expectedFilename && parsed.filename !== test.expectedFilename) {
+                    console.log(`❌ FAIL (Expected Filename: ${test.expectedFilename}, Got: ${parsed.filename || 'undefined'})`);
+                } else {
+                    console.log(`✅ PASS (Intent: ${parsed.intent})`);
+                    passed++;
+                }
             } else {
                 console.log(`❌ FAIL (Expected: ${test.expectedIntent}, Got: ${parsed.intent})`);
                 console.log(`   Output JSON: ${JSON.stringify(parsed)}`);
@@ -101,7 +88,6 @@ async function testOllama() {
             console.log(`❌ FAIL (Error: ${error.message})`);
         }
     }
-    
     console.log(`\n🏁 Test Complete: ${passed}/${testCases.length} Passed.\n`);
 }
 

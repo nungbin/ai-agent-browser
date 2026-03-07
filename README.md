@@ -5,6 +5,7 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
 ## 🚀 Core Capabilities
 - **Dynamic Skill Registry:** Simply drop a new folder into `skills/` with a `skill.js` and `skill.md`, and the bot automatically learns how to use it on boot! No core code edits required.
 - **Stateful CLI:** Tracks its Current Working Directory (CWD). If you `cd sandbox`, it stays there for subsequent commands. Includes a safe-list for auto-execution and a Telegram confirmation button for unknown commands.
+- **Secure Sandbox Generation:** AI-generated scripts are securely sanitized and written exclusively to the `sandbox/` directory, preventing directory traversal attacks. Markdown formatting is automatically stripped so code is instantly executable.
 - **Hybrid SAP Control:** Triggers a visible SAP window on a remote Windows host via SSH and Scheduled Tasks (GUI Mode), or prepares for headless data retrieval (RFC Mode).
 - **Auto-Cleaning Logger:** Custom logging engine that prepends timestamps, creates daily log files in `logs/`. Retention period is configurable via `.env`.
 - **Voice / TTS / STT:** Generates Text-to-Speech audio replies dynamically, and uses a dedicated CPU microservice to transcribe incoming voice notes via Whisper.
