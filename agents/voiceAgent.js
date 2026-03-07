@@ -1,30 +1,33 @@
-const axios = require('axios');
+// File: agents/voiceAgent.js
+const gTTS = require('gtts');
+const path = require('path');
 const fs = require('fs');
-const ffmpeg = require('fluent-ffmpeg');
 
-async function processVoiceNote(fileUrl, outputPath) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const response = await axios({ url: fileUrl, method: 'GET', responseType: 'stream' });
-      const tempInput = './temp_voice.oga';
-      const writer = fs.createWriteStream(tempInput);
-      
-      response.data.pipe(writer);
-      
-      writer.on('finish', () => {
-        ffmpeg(tempInput)
-          .toFormat('wav')
-          .on('error', (err) => reject(err))
-          .on('end', () => {
-            fs.unlinkSync(tempInput); 
-            resolve(`✅ Voice note converted to ${outputPath}. Ready for local Whisper transcription!`);
-          })
-          .save(outputPath);
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
+/**
+ * Converts text into a spoken audio file (MP3)
+ * @param {string} text - The text you want the bot to say
+ * @returns {Promise<string>} - The file path to the generated audio
+ */
+function generateSpeech(text) {
+    return new Promise((resolve, reject) => {
+        try {
+            // Remove markdown and emojis so the TTS engine doesn't read them out loud
+            const cleanText = text.replace(/[*_#`]/g, '').replace(/[\u{1F600}-\u{1F6FF}]/gu, '');
+            
+            const gtts = new gTTS(cleanText, 'en');
+            
+            // Save to the sandbox directory
+            const fileName = `voice_reply_${Date.now()}.mp3`;
+            const filePath = path.join(__dirname, '..', 'sandbox', fileName);
+            
+            gtts.save(filePath, function (err, result) {
+                if (err) return reject(err);
+                resolve(filePath);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
 }
 
-module.exports = { processVoiceNote };
+module.exports = { generateSpeech };
