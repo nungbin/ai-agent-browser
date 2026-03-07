@@ -7,7 +7,7 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
 - **Stateful CLI:** Tracks its Current Working Directory (CWD). If you `cd sandbox`, it stays there for subsequent commands. Includes a safe-list for auto-execution and a Telegram confirmation button for unknown commands.
 - **Hybrid SAP Control:** - **GUI Mode:** Triggers a visible SAP window on a remote Windows host via SSH and Scheduled Tasks.
   - **RFC Mode:** Placeholder for headless data retrieval.
-- **Auto-Cleaning Logger:** Custom logging engine that prepends timestamps, creates daily log files in `logs/`, and automatically deletes files older than 7 days.
+- **Auto-Cleaning Logger:** Custom logging engine that prepends timestamps, creates daily log files in `logs/`. Retention period is configurable via `.env`.
 - **Voice / TTS:** Generates Text-to-Speech audio replies dynamically.
 
 ---
@@ -22,9 +22,10 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
   ├── helpers/
   │    ├── commandHandler.js  # Telegram slash commands (/safe, /clear)
   │    ├── cronHelper.js      # Scheduling logic
-  │    ├── logger.js          # Custom 7-day retention logging
+  │    ├── logger.js          # Custom environment-aware logging
   │    └── voiceHelper.js     # TTS Engine
   ├── skills/                 # DYNAMIC PLUG-N-PLAY CAPABILITIES
+  │    ├── browser/           # Puppeteer web scraping (WIP)
   │    ├── cli/               # e.g., skill.js and skill.md
   │    ├── news/
   │    ├── sap/
@@ -68,6 +69,9 @@ SAP_SYSTEM=NPL
 SAP_CLIENT=001
 SAP_USER=your_actual_username
 SAP_PASSWORD=your_actual_password
+
+# Logging Configuration
+LOG_RETENTION_DAYS=7
 ```
 
 3. Start the bot:
