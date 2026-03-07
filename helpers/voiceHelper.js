@@ -1,6 +1,10 @@
 // File: helpers/voiceHelper.js
 const gTTS = require('gtts');
 const path = require('path');
+const fs = require('fs');
+const axios = require('axios');
+const FormData = require('form-data');
+const logger = require('./logger');
 
 exports.generateSpeech = (text, sandboxDir) => {
     return new Promise((resolve, reject) => {
@@ -17,4 +21,41 @@ exports.generateSpeech = (text, sandboxDir) => {
             reject(error);
         }
     });
+};
+
+exports.transcribeAudio = async (fileLink, sttServerUrl, sandboxDir) => {
+    const tempFilePath = path.join(sandboxDir, `voice_in_${Date.now()}.ogg`);
+    
+    try {
+        // 1. Download the audio file from Telegram
+        const writer = fs.createWriteStream(tempFilePath);
+        const response = await axios({
+            url: fileLink,
+            method: 'GET',
+            responseType: 'stream'
+        });
+        
+        response.data.pipe(writer);
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+        // 2. Forward the file to your STT Microservice
+        const formData = new FormData();
+        formData.append('audio', fs.createReadStream(tempFilePath));
+        
+        const sttResponse = await axios.post(sttServerUrl, formData, {
+            headers: formData.getHeaders(),
+            timeout: 30000 // 30 second timeout for transcription
+        });
+        
+        // 3. Cleanup local temp file
+        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+        
+        return sttResponse.data.text;
+    } catch (err) {
+        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+        throw new Error(`Microservice failed: ${err.message}`);
+    }
 };

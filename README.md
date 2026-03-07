@@ -5,10 +5,9 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
 ## 🚀 Core Capabilities
 - **Dynamic Skill Registry:** Simply drop a new folder into `skills/` with a `skill.js` and `skill.md`, and the bot automatically learns how to use it on boot! No core code edits required.
 - **Stateful CLI:** Tracks its Current Working Directory (CWD). If you `cd sandbox`, it stays there for subsequent commands. Includes a safe-list for auto-execution and a Telegram confirmation button for unknown commands.
-- **Hybrid SAP Control:** - **GUI Mode:** Triggers a visible SAP window on a remote Windows host via SSH and Scheduled Tasks.
-  - **RFC Mode:** Placeholder for headless data retrieval.
+- **Hybrid SAP Control:** Triggers a visible SAP window on a remote Windows host via SSH and Scheduled Tasks (GUI Mode), or prepares for headless data retrieval (RFC Mode).
 - **Auto-Cleaning Logger:** Custom logging engine that prepends timestamps, creates daily log files in `logs/`. Retention period is configurable via `.env`.
-- **Voice / TTS:** Generates Text-to-Speech audio replies dynamically.
+- **Voice / TTS / STT:** Generates Text-to-Speech audio replies dynamically, and uses a dedicated CPU microservice to transcribe incoming voice notes via Whisper.
 
 ---
 
@@ -23,7 +22,7 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
   │    ├── commandHandler.js  # Telegram slash commands (/safe, /clear)
   │    ├── cronHelper.js      # Scheduling logic
   │    ├── logger.js          # Custom environment-aware logging
-  │    └── voiceHelper.js     # TTS Engine
+  │    └── voiceHelper.js     # TTS Engine and STT API integrations
   ├── skills/                 # DYNAMIC PLUG-N-PLAY CAPABILITIES
   │    ├── browser/           # Puppeteer web scraping (WIP)
   │    ├── cli/               # e.g., skill.js and skill.md
@@ -32,6 +31,7 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
   │    ├── sheets/
   │    ├── weather/
   │    └── write_file/
+  ├── stt-microservice/       # Source code backup for the Whisper STT LXC
   ├── logs/                   # Auto-generated daily logs (Ignored in Git)
   ├── data/                   # Persistent memory and settings (Ignored in Git)
   └── sandbox/                # Workspace for AI-generated code (Ignored in Git)
@@ -39,42 +39,95 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
 
 ---
 
-## 🛠️ Remote SAP Setup (Windows Host)
-To enable the bot to control SAP GUI visibly on a Windows machine:
-1. Copy `sap_master.vbs` from this repo's `Windows_Script/` folder to `C:\SAP_Bots\sap_master.vbs` on Windows.
-2. Create an empty folder at `C:\SAP_Bots\scripts\`.
-3. Create a Scheduled Task named `LaunchSAP_NPL`:
-   - Action: `wscript.exe "C:\SAP_Bots\sap_master.vbs"`
-   - Security: "Run only when user is logged on" (Interactive mode).
+## 🗣️ Usage Examples (Text & Voice)
+
+You can send these requests to the bot via **Text Message** or by holding down the **Microphone Button** to send a Voice Note!
+
+- **CLI Skill:** `run pwd` or `cd sandbox` or `ls -la`
+- **Write File Skill:** `write a python script named hello.py that prints hello world`
+- **Weather Skill:** `what is the weather in London?`
+- **News Skill:** `get me the latest tech news`
+- **Sheets Skill:** `read the latest row from my google sheet`
+- **SAP Skill (GUI):** `check ST22 in SAP`
+- **SAP Skill (RFC):** `query the latest sales orders in SAP`
+- **Browser Skill:** `go to google.com and scrape the headlines`
+- **TTS Generation:** `say "Initialization complete" in a voice note` or `how are you doing today? please speak your reply.`
 
 ---
 
-## 📥 Installation (Linux LXC / Host)
+## 🛠️ Installation & Setup (Main Bot LXC)
 
-1. Clone this repository:
+1. **Clone & Install:**
 ```bash
 git clone <repository_url>
 cd agent-browser
 npm install
 ```
 
-2. Configure `.env`:
+2. **Configure Environment variables:**
+Rename `.env.example` to `.env` (or create a new `.env` file) and populate it:
 ```env
+# ==========================================
+# 1. CORE TELEGRAM & MEMORY CONFIG
+# ==========================================
 TELEGRAM_TOKEN=your_telegram_bot_token
+MEMORY_LIMIT=30
+
+# ==========================================
+# 2. LOCAL AI / OLLAMA CONFIG
+# ==========================================
 OLLAMA_IP=192.168.1.105
 OLLAMA_MODEL=qwen3.5:4b
+
+# ==========================================
+# 3. WINDOWS HOST CONFIG (For SAP GUI Automation)
+# ==========================================
 WINDOWS_HOST=192.168.1.116
-WINDOWS_USER=hpa6
+WINDOWS_USER=your_windows_admin_user
+
+# ==========================================
+# 4. SAP CREDENTIALS (Cold Start Injection)
+# ==========================================
 SAP_SYSTEM=NPL
 SAP_CLIENT=001
 SAP_USER=your_actual_username
 SAP_PASSWORD=your_actual_password
 
-# Logging Configuration
+# ==========================================
+# 5. LOGGING & MICROSERVICES
+# ==========================================
 LOG_RETENTION_DAYS=7
+STT_SERVER_URL=[http://192.168.1.156:3000/transcribe](http://192.168.1.156:3000/transcribe)
 ```
 
-3. Start the bot:
+3. **Start the bot:**
 ```bash
 node bot.js --debug
+```
+
+---
+
+## 🎙️ Installation (STT Whisper Microservice LXC)
+To keep the AI GPU free, Speech-to-Text runs on a separate CPU-only Ubuntu LXC.
+
+1. **Setup the Container:**
+```bash
+apt update && apt install -y curl build-essential ffmpeg git python3 make g++ wget
+curl -fsSL [https://deb.nodesource.com/setup_20.x](https://deb.nodesource.com/setup_20.x) | bash -
+apt install -y nodejs
+```
+
+2. **Deploy the Code:**
+Copy the code from this repository's `stt-microservice/server.js` to the new LXC, then run:
+```bash
+npm init -y
+npm install express multer fluent-ffmpeg whisper-node
+```
+
+3. **Run on Boot (PM2):**
+```bash
+npm install -g pm2
+pm2 start server.js --name stt-server
+pm2 startup
+pm2 save
 ```

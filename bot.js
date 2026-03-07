@@ -10,9 +10,9 @@ const fs = require('fs').promises;
 const commandHandler = require('./helpers/commandHandler');
 const voiceHelper = require('./helpers/voiceHelper');
 const cronHelper = require('./helpers/cronHelper');
-const logger = require('./helpers/logger'); // <-- NEW LOGGER
+const logger = require('./helpers/logger');
 
-// 0. GLOBAL ERROR HANDLERS (Now using logger)
+// 0. GLOBAL ERROR HANDLERS (Using the custom logger)
 process.on('uncaughtException', (err) => logger.error('CRITICAL UNCAUGHT EXCEPTION', err.stack));
 process.on('unhandledRejection', (reason) => logger.error('UNHANDLED REJECTION', reason.stack || reason));
 
@@ -148,6 +148,8 @@ async function startProgress(chatId, text) {
 async function callOllama(prompt) {
     logger.debug("Ollama Prompt", prompt);
     const controller = new AbortController();
+    
+    // INCREASED TIMEOUT: 5 Minutes (300000ms) for cold starting models
     const timeoutId = setTimeout(() => controller.abort(), 300000); 
     
     try {
@@ -180,14 +182,27 @@ bot.on('voice', async (msg) => {
     let prog = await startProgress(chatId, "Downloading & Transcribing Voice...");
     
     try {
-        const transcribedText = "This is a simulated transcript. How are you?";
+        const sttUrl = process.env.STT_SERVER_URL;
+        if (!sttUrl) throw new Error("STT_SERVER_URL is not configured in .env");
+
+        // Send audio to STT Microservice for CPU transcription
+        const transcribedText = await voiceHelper.transcribeAudio(fileLink, sttUrl, SANDBOX_DIR);
+        
+        if (!transcribedText || transcribedText.trim() === "") {
+            throw new Error("Could not hear any words in the audio.");
+        }
+
         clearInterval(prog.interval);
         bot.deleteMessage(chatId, prog.mid).catch(()=>{});
-        bot.sendMessage(chatId, `🗣️ <i>You said: "${transcribedText}"</i>\n(STT not yet installed. Proceeding...)`, { parse_mode: 'HTML' });
         
+        // Echo back what it heard
+        bot.sendMessage(chatId, `🗣️ <i>You said: "${transcribedText}"</i>`, { parse_mode: 'HTML' });
+        
+        // Feed the transcribed text directly into the AI Brain!
         await processPipeline(chatId, transcribedText, false);
+        
     } catch (e) {
-        clearInterval(prog.interval);
+        if (prog) clearInterval(prog.interval);
         logger.error("Voice Error", e.message);
         bot.sendMessage(chatId, `❌ <b>Voice Error:</b> ${e.message}`, { parse_mode: 'HTML' });
     }
@@ -246,7 +261,8 @@ async function processPipeline(chatId, userText, isCron = false) {
             const out = dec.output || "I'm not sure how to respond to that.";
             saveToMemory(chatId, 'Assistant', out);
             
-            if (userText.toLowerCase().includes("voice") || userText.toLowerCase().includes("speak")) {
+            // Trigger TTS audio if requested verbally or via text
+            if (userText.toLowerCase().includes("voice") || userText.toLowerCase().includes("speak") || userText.toLowerCase().includes("say")) {
                 let ttsProg = await startProgress(chatId, "Generating Audio...");
                 const audioPath = await voiceHelper.generateSpeech(out, SANDBOX_DIR);
                 clearInterval(ttsProg.interval);
@@ -271,7 +287,7 @@ async function processPipeline(chatId, userText, isCron = false) {
 // 6. INITIALIZATION
 // ==========================================
 async function startSystem() {
-    // Run the 7-day log cleanup before doing anything else
+    // Run the configurable log cleanup before doing anything else
     await logger.cleanOldLogs();
     
     await loadData();
