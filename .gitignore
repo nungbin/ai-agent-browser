@@ -1,22 +1,23 @@
-# Dependency directories
+.vscode
+
+# Dependencies
 node_modules/
-   
-# Secret Environment Variables
+
+# Environment
 .env
-   
-# Bot Memory, Safelists, and Prompts
+
+# Data, Persistence, and Prompts
 data/
 
-# Generated Files Testing Ground
-sandbox/
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# logs
+# Logs
 logs/
 
-.vscode
+# Testing Ground (Created by bot)
+sandbox/
+
+# Puppeteer/Browser Profiles (CRITICAL SECURITY)
 auth-profile/
 
+# OS Files
+.DS_Store
+Thumbs.d

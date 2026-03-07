@@ -3,7 +3,7 @@ const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 
-// FIX: Start in the folder where bot.js is executed, not the user's HOME
+// Start in the folder where bot.js is executed
 let currentDir = process.cwd(); 
 
 const runCommand = async (command) => {
@@ -24,6 +24,12 @@ module.exports = {
     runCommand, 
     execute: async (parsedJson, context) => {
         const cmd = parsedJson.output;
+        
+        // DEFENSIVE CHECK: If the LLM forgot the output key, throw a friendly error
+        if (!cmd) {
+            throw new Error("The AI failed to generate the bash command. Please try asking again.");
+        }
+
         const isSafe = context.state.safeCommands.some(s => cmd.trim().startsWith(s));
         
         if (isSafe) {

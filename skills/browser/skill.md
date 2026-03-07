@@ -1,0 +1,3 @@
+- "browser": Control a headless Chrome browser to scrape websites or automate web tasks.
+  - RULE: Output MUST be the URL or instructions for the browser.
+  - EXAMPLE: {"intent": "browser", "output": "https://example.com"}
