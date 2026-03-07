@@ -71,7 +71,7 @@ WINDOWS_HOST=192.168.1.116
 WINDOWS_USER=hpa6
 SAP_SYSTEM=NPL
 SAP_CLIENT=001
-SAP_USER=
+SAP_USER=your_actual_username
 SAP_PASSWORD=your_actual_password
 
 
