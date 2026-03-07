@@ -1,23 +1,20 @@
-🤖 Agentic AI Coder & SAP Controller (Modular V2)
+# 🤖 Agentic AI Coder & SAP Controller (Modular V2)
 
-An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a C/Python Coder, and a Remote SAP GUI Controller. Powered by local LLMs (Ollama) and designed with a highly extensible Plug-n-Play Skill Registry.
+An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a C/Python Coder, and a Remote SAP GUI Controller. Powered by local LLMs (Ollama) and designed with a highly extensible **Plug-n-Play Skill Registry**.
 
-🚀 Core Capabilities
+## 🚀 Core Capabilities
+- **Dynamic Skill Registry:** Simply drop a new folder into `skills/` with a `skill.js` and `skill.md`, and the bot automatically learns how to use it on boot! No core code edits required.
+- **Stateful CLI:** Tracks its Current Working Directory (CWD). If you `cd sandbox`, it stays there for subsequent commands. Includes a safe-list for auto-execution and a Telegram confirmation button for unknown commands.
+- **Hybrid SAP Control:** - **GUI Mode:** Triggers a visible SAP window on a remote Windows host via SSH and Scheduled Tasks.
+  - **RFC Mode:** Placeholder for headless data retrieval.
+- **Auto-Cleaning Logger:** Custom logging engine that prepends timestamps, creates daily log files in `logs/`, and automatically deletes files older than 7 days.
+- **Voice / TTS:** Generates Text-to-Speech audio replies dynamically.
 
-Dynamic Skill Registry: Simply drop a new folder into skills/ with a skill.js and skill.md, and the bot automatically learns how to use it on boot! No core code edits required.
+---
 
-Stateful CLI: Tracks its Current Working Directory (CWD). If you cd sandbox, it stays there for subsequent commands. Includes a safe-list for auto-execution and a Telegram confirmation button for unknown commands.
+## 📂 Project Structure
 
-Hybrid SAP Control: - GUI Mode: Triggers a visible SAP window on a remote Windows host via SSH and Scheduled Tasks.
-
-RFC Mode: Placeholder for headless data retrieval.
-
-Auto-Cleaning Logger: Custom logging engine that prepends timestamps, creates daily log files in logs/, and automatically deletes files older than 7 days.
-
-Voice / TTS: Generates Text-to-Speech audio replies dynamically.
-
-📂 Project Structure
-
+```text
 /agent-browser
   ├── bot.js                  # The Core Brain / Router
   ├── prompts/
@@ -37,33 +34,31 @@ Voice / TTS: Generates Text-to-Speech audio replies dynamically.
   ├── logs/                   # Auto-generated daily logs (Ignored in Git)
   ├── data/                   # Persistent memory and settings (Ignored in Git)
   └── sandbox/                # Workspace for AI-generated code (Ignored in Git)
+```
 
+---
 
-🛠️ Remote SAP Setup (Windows Host)
-
+## 🛠️ Remote SAP Setup (Windows Host)
 To enable the bot to control SAP GUI visibly on a Windows machine:
+1. Copy `sap_master.vbs` from this repo's `Windows_Script/` folder to `C:\SAP_Bots\sap_master.vbs` on Windows.
+2. Create an empty folder at `C:\SAP_Bots\scripts\`.
+3. Create a Scheduled Task named `LaunchSAP_NPL`:
+   - Action: `wscript.exe "C:\SAP_Bots\sap_master.vbs"`
+   - Security: "Run only when user is logged on" (Interactive mode).
 
-Copy sap_master.vbs from this repo's Windows_Script/ folder to C:\SAP_Bots\sap_master.vbs on Windows.
+---
 
-Create an empty folder at C:\SAP_Bots\scripts\.
+## 📥 Installation (Linux LXC / Host)
 
-Create a Scheduled Task named LaunchSAP_NPL:
-
-Action: wscript.exe "C:\SAP_Bots\sap_master.vbs"
-
-Security: "Run only when user is logged on" (Interactive mode).
-
-📥 Installation (Linux LXC / Host)
-
-Clone this repository:
-
+1. Clone this repository:
+```bash
 git clone <repository_url>
 cd agent-browser
 npm install
+```
 
-
-Configure .env:
-
+2. Configure `.env`:
+```env
 TELEGRAM_TOKEN=your_telegram_bot_token
 OLLAMA_IP=192.168.1.105
 OLLAMA_MODEL=qwen3.5:4b
@@ -73,8 +68,9 @@ SAP_SYSTEM=NPL
 SAP_CLIENT=001
 SAP_USER=your_actual_username
 SAP_PASSWORD=your_actual_password
+```
 
-
-Start the bot:
-
+3. Start the bot:
+```bash
 node bot.js --debug
+```
