@@ -47,11 +47,13 @@ You can send these requests to the bot via **Text Message** or by holding down t
 - **Write File Skill:** `write a python script named hello.py that prints hello world`
 - **Weather Skill:** `what is the weather in London?`
 - **News Skill:** `get me the latest tech news`
-- **Sheets Skill:** `read the latest row from my google sheet`
 - **SAP Skill (GUI):** `check ST22 in SAP`
-- **SAP Skill (RFC):** `query the latest sales orders in SAP`
-- **Browser Skill:** `go to google.com and scrape the headlines`
 - **TTS Generation:** `say "Initialization complete" in a voice note` or `how are you doing today? please speak your reply.`
+
+### ⚠️ Under Construction (Not Tested)
+- **Sheets Skill:** `read the latest row from my google sheet` *(Not Tested)*
+- **SAP Skill (RFC):** `query the latest sales orders in SAP` *(Not Tested)*
+- **Browser Skill:** `go to google.com and scrape the headlines` *(Not Tested)*
 
 ---
 
@@ -97,7 +99,8 @@ SAP_PASSWORD=your_actual_password
 # 5. LOGGING & MICROSERVICES
 # ==========================================
 LOG_RETENTION_DAYS=7
-STT_SERVER_URL=[http://192.168.1.156:3000/transcribe](http://192.168.1.156:3000/transcribe)
+# Wrapped in quotes to prevent clickable hyperlinking in markdown
+STT_SERVER_URL="[http://192.168.1.156:3000/transcribe](http://192.168.1.156:3000/transcribe)"
 ```
 
 3. **Start the bot:**
@@ -120,14 +123,25 @@ apt install -y nodejs
 2. **Deploy the Code:**
 Copy the code from this repository's `stt-microservice/server.js` to the new LXC, then run:
 ```bash
+mkdir -p ~/stt-microservice
+cd ~/stt-microservice
 npm init -y
 npm install express multer fluent-ffmpeg whisper-node
 ```
 
 3. **Run on Boot (PM2):**
+Make sure you are in the correct directory before starting PM2!
 ```bash
+cd ~/stt-microservice
 npm install -g pm2
+
+# Start the server (PM2 saves the absolute path of your current folder)
 pm2 start server.js --name stt-server
+
+# Generate the boot script
 pm2 startup
+# IMPORTANT: Copy and paste the command that PM2 outputs on your screen and run it!
+
+# Save the configuration so it boots on next restart
 pm2 save
 ```
