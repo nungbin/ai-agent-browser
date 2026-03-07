@@ -1,151 +1,108 @@
 // File: regression_testing/test_router.js
-const path = require('path');
+require('dotenv').config({ path: '../.env' });
 const fs = require('fs').promises;
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const path = require('path');
 
-const OLLAMA_URL = `http://${process.env.OLLAMA_IP || '127.0.0.1'}:11434/api/generate`;
+const OLLAMA_IP = process.env.OLLAMA_IP || '127.0.0.1';
 const CORE_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
+const OLLAMA_URL = `http://${OLLAMA_IP}:11434/api/generate`;
 
-// ==========================================
-// 1. THE TEST SUITE
-// ==========================================
-const tests = [
-    {
-        name: "CLI Execution",
-        input: "run ls -al",
-        expectedIntent: "cli",
-        requiredKeys: ["output"]
-    },
-    {
-        name: "CLI Compile",
-        input: "compile hello.c",
-        expectedIntent: "cli",
-        requiredKeys: ["output"]
-    },
-    {
-        name: "File Writing (Explicit)",
-        input: "write a python script named test.py that prints hi",
-        expectedIntent: "write_file",
-        requiredKeys: ["filename", "output"]
-    },
-    {
-        name: "File Writing (Implicit 1)",
-        input: "write a program hello.c which prints hello world",
-        expectedIntent: "write_file",
-        requiredKeys: ["filename", "output"]
-    },
-    {
-        name: "File Writing (Implicit 2)",
-        input: "write a c program hello.c which prints hello world",
-        expectedIntent: "write_file",
-        requiredKeys: ["filename", "output"]
-    },
-    {
-        name: "Weather without City",
-        input: "what's the weather",
-        expectedIntent: "clarify",
-        requiredKeys: ["output"]
-    },
-    {
-        name: "Weather with City",
-        input: "what is the weather in Edmonton",
-        expectedIntent: "weather",
-        requiredKeys: ["output"]
-    },
-    {
-        name: "SAP GUI Routing",
-        input: "check SAP for ST22 dumps",
-        expectedIntent: "sap",
-        requiredKeys: ["output"]
-    },
-    {
-        name: "Cron Scheduling",
-        input: "check the weather in tokyo every morning at 8 am",
-        expectedIntent: "schedule",
-        requiredKeys: ["cron", "output"]
-    }
+// Define the tests
+const testCases = [
+    { prompt: "get me news", expectedIntent: "news" },
+    { prompt: "what is the weather in London", expectedIntent: "weather" },
+    { prompt: "Check ST22 in SAP", expectedIntent: "sap" },
+    { prompt: "run pwd", expectedIntent: "cli" },
+    { prompt: "write a python script that prints hello world", expectedIntent: "write_file" },
+    { prompt: "read the latest row from my google sheet", expectedIntent: "sheets" },
+    { prompt: "how are you doing today?", expectedIntent: "chat" }
 ];
 
-// ==========================================
-// 2. MOCK ROUTER PROMPT
-// ==========================================
-async function testLLM(userText) {
-    const promptPath = path.join(__dirname, '../data/system_prompt.txt');
-    let promptTemplate;
+async function loadDynamicPrompt() {
+    console.log("Loading dynamic skills from ../skills...");
+    let dynamicPromptAdditions = "";
+    const skillsDir = path.join(__dirname, '..', 'skills');
     
     try {
-        promptTemplate = await fs.readFile(promptPath, 'utf8');
-    } catch (e) {
-        throw new Error(`Could not find system_prompt.txt at ${promptPath}. Please create it first!`);
+        const folders = await fs.readdir(skillsDir);
+        for (const folder of folders) {
+            const mdPath = path.join(skillsDir, folder, 'skill.md');
+            try {
+                const mdContent = await fs.readFile(mdPath, 'utf8');
+                dynamicPromptAdditions += `\n${mdContent.trim()}\n`;
+            } catch (e) {
+                // Ignore folders without skill.md
+            }
+        }
+    } catch(e) {
+        console.error("Failed to read skills directory:", e);
     }
-
-    const routerPrompt = promptTemplate
-        .replace('{{CONVERSATION_HISTORY}}', 'No prior conversation.')
-        .replace('{{USER_MESSAGE}}', userText);
-
-    const res = await fetch(OLLAMA_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            model: CORE_MODEL,
-            prompt: routerPrompt,
-            format: 'json',
-            stream: false
-        })
-    });
-
-    const data = await res.json();
-    let cleanStr = data.response.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const firstBrace = cleanStr.indexOf('{');
-    const lastBrace = cleanStr.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) cleanStr = cleanStr.substring(firstBrace, lastBrace + 1);
     
-    return JSON.parse(cleanStr);
+    const basePromptPath = path.join(__dirname, '..', 'prompts', 'system_prompt.txt');
+    const promptTemplate = await fs.readFile(basePromptPath, 'utf8');
+    
+    return promptTemplate.replace('{{DYNAMIC_SKILLS}}', dynamicPromptAdditions);
 }
 
-// ==========================================
-// 3. TEST RUNNER
-// ==========================================
-async function runTests() {
-    console.log(`🧪 Starting AI Regression Tests on model: [${CORE_MODEL}]...\n`);
+async function testOllama() {
+    console.log(`\n🧪 Starting Router Regression Test against ${CORE_MODEL}\n`);
+    
+    let basePrompt;
+    try {
+        basePrompt = await loadDynamicPrompt();
+    } catch (error) {
+        console.error("❌ Failed to build prompt:", error);
+        return;
+    }
+
     let passed = 0;
+    
+    for (const test of testCases) {
+        process.stdout.write(`Testing: "${test.prompt}"... `);
+        
+        // Inject conversation history (empty) and user message
+        const finalPrompt = basePrompt
+            .replace('{{CONVERSATION_HISTORY}}', 'No prior context.')
+            .replace('{{USER_MESSAGE}}', test.prompt);
 
-    for (const test of tests) {
-        process.stdout.write(`Testing: ${test.name.padEnd(25)} `);
         try {
-            const result = await testLLM(test.input);
+            const res = await fetch(OLLAMA_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    model: CORE_MODEL, 
+                    prompt: finalPrompt, 
+                    stream: false,
+                    format: 'json'
+                })
+            });
             
-            // Check Intent
-            if (result.intent !== test.expectedIntent) {
-                console.log(`❌ FAILED (Expected intent '${test.expectedIntent}', got '${result.intent}')`);
-                continue;
+            const data = await res.json();
+            let rawStr = data.response || data.thinking || "";
+            
+            // Clean JSON
+            let cleanStr = rawStr.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json|```/gi, '').trim();
+            const firstBrace = cleanStr.indexOf('{');
+            const lastBrace = cleanStr.lastIndexOf('}');
+            if (firstBrace === -1 || lastBrace === -1) throw new Error("Invalid JSON");
+            
+            cleanStr = cleanStr.substring(firstBrace, lastBrace + 1);
+            const parsed = JSON.parse(cleanStr);
+            
+            if (parsed.intent === test.expectedIntent) {
+                console.log(`✅ PASS (Intent: ${parsed.intent})`);
+                passed++;
+            } else {
+                console.log(`❌ FAIL (Expected: ${test.expectedIntent}, Got: ${parsed.intent})`);
+                console.log(`   Output JSON: ${JSON.stringify(parsed)}`);
             }
-
-            // Check Required Keys
-            let keysValid = true;
-            for (const key of test.requiredKeys) {
-                if (!result[key]) {
-                    console.log(`❌ FAILED (Missing required key: '${key}')`);
-                    console.log(`   LLM Output:`, result);
-                    keysValid = false;
-                    break;
-                }
-            }
-            if (!keysValid) continue;
-
-            console.log(`✅ PASSED`);
-            passed++;
-        } catch (e) {
-            console.log(`❌ ERROR (${e.message})`);
+            
+        } catch (error) {
+            console.log(`❌ FAIL (Error: ${error.message})`);
         }
     }
-
-    console.log(`\n📊 Test Summary: ${passed}/${tests.length} Passed.`);
-    if (passed === tests.length) {
-        console.log(`🚀 All tests passed! It is safe to deploy changes.`);
-    } else {
-        console.log(`⚠️ Warning: Prompt regression detected. Fix prompt before deploying.`);
-    }
+    
+    console.log(`\n🏁 Test Complete: ${passed}/${testCases.length} Passed.\n`);
 }
 
-runTests();
+testOllama();

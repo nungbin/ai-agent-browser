@@ -5,89 +5,113 @@ const path = require('path');
 const fs = require('fs').promises;
 
 // ==========================================
-// 0. GLOBAL ERROR HANDLERS
+// 1. HELPERS & CONFIG
 // ==========================================
-process.on('uncaughtException', (err) => console.error('🔥 [CRITICAL]:', err.message));
-process.on('unhandledRejection', (reason) => console.error('⚠️ [REJECTION]:', reason.message || reason));
+const commandHandler = require('./helpers/commandHandler');
+const voiceHelper = require('./helpers/voiceHelper');
+const cronHelper = require('./helpers/cronHelper');
+const logger = require('./helpers/logger'); // <-- NEW LOGGER
 
-// ==========================================
-// 1. IMPORT AGENTS
-// ==========================================
-const cliAgent = require('./agents/cliAgent');
-const sapAgent = require('./agents/sapAgent');
-const cronAgent = require('./agents/cronAgent'); 
-const newsAgent = require('./agents/newsAgent');
-const weatherAgent = require('./agents/weatherAgent');
-const voiceAgent = require('./agents/voiceAgent');
+// 0. GLOBAL ERROR HANDLERS (Now using logger)
+process.on('uncaughtException', (err) => logger.error('CRITICAL UNCAUGHT EXCEPTION', err.stack));
+process.on('unhandledRejection', (reason) => logger.error('UNHANDLED REJECTION', reason.stack || reason));
 
-// ==========================================
-// 2. CONFIG & SETUP
-// ==========================================
 const DATA_DIR = path.join(__dirname, 'data');
 const SANDBOX_DIR = path.join(__dirname, 'sandbox'); 
-const PROMPT_FILE = path.join(DATA_DIR, 'system_prompt.txt');
+const PROMPTS_DIR = path.join(__dirname, 'prompts');
+const PROMPT_FILE = path.join(PROMPTS_DIR, 'system_prompt.txt');
+
 const isDebug = process.argv.includes('--debug') || process.argv.includes('-d');
+logger.setDebug(isDebug);
 
 async function init() {
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.mkdir(SANDBOX_DIR, { recursive: true });
+    await fs.mkdir(path.join(__dirname, 'skills'), { recursive: true });
+    await fs.mkdir(PROMPTS_DIR, { recursive: true });
 }
 init();
-
-function debugLog(label, data = '') {
-  if (isDebug) {
-    console.log(`\n[DEBUG] === ${label} ===`);
-    if (data) console.log(typeof data === 'object' ? JSON.stringify(data, null, 2) : data);
-  }
-}
 
 const token = process.env.TELEGRAM_TOKEN;
 const OLLAMA_URL = `http://${process.env.OLLAMA_IP}:11434/api/generate`;
 const CORE_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';  
 const bot = new TelegramBot(token, { polling: true });
-const pendingCommands = new Map();
+
+// Shared State for Helpers & Skills
+const state = {
+    chatMemory: new Map(),
+    safeCommands: [],
+    pendingCommands: new Map(),
+    MEMORY_FILE: path.join(DATA_DIR, 'memory.json'),
+    SAFE_FILE: path.join(DATA_DIR, 'safe_commands.json'),
+    SANDBOX_DIR: SANDBOX_DIR
+};
 
 // ==========================================
-// 3. PERSISTENCE, MEMORY & CRON
+// 2. DYNAMIC SKILL REGISTRY (The Magic)
 // ==========================================
-const MEMORY_FILE = path.join(DATA_DIR, 'memory.json');
-const SAFE_FILE = path.join(DATA_DIR, 'safe_commands.json');
-let chatMemory = new Map();
-let safeCommands = [];
+const activeSkills = {};
+let dynamicPromptAdditions = "";
 
-async function loadData() {
+async function loadSkills() {
+    const skillsDir = path.join(__dirname, 'skills');
     try {
-        const mem = await fs.readFile(MEMORY_FILE, 'utf8');
-        chatMemory = new Map(Object.entries(JSON.parse(mem)));
-        const safe = await fs.readFile(SAFE_FILE, 'utf8');
-        safeCommands = JSON.parse(safe);
+        const folders = await fs.readdir(skillsDir);
+        for (const folder of folders) {
+            const folderPath = path.join(skillsDir, folder);
+            const stat = await fs.stat(folderPath);
+            
+            if (stat.isDirectory()) {
+                try {
+                    const skillModule = require(path.join(folderPath, 'skill.js'));
+                    activeSkills[skillModule.name] = skillModule;
+                    
+                    const mdContent = await fs.readFile(path.join(folderPath, 'skill.md'), 'utf8');
+                    dynamicPromptAdditions += `\n${mdContent.trim()}\n`;
+                    
+                    logger.info("Skill Loaded", skillModule.name);
+                } catch (e) {
+                    logger.error(`Failed to load skill in /${folder}`, e.message);
+                }
+            }
+        }
     } catch (e) {
-        safeCommands = ['pwd', 'ls', 'whoami', 'date', 'gcc', './', 'which'];
+        logger.info("System", "No 'skills' directory found yet.");
     }
 }
-loadData();
 
-// Initialize Cron Agent with the pipeline function
-cronAgent.init((chatId, task, isCron) => processPipeline(chatId, task, isCron));
+// ==========================================
+// 3. PERSISTENCE & MEMORY
+// ==========================================
+async function loadData() {
+    try {
+        const mem = await fs.readFile(state.MEMORY_FILE, 'utf8');
+        state.chatMemory = new Map(Object.entries(JSON.parse(mem)));
+        const safe = await fs.readFile(state.SAFE_FILE, 'utf8');
+        state.safeCommands = JSON.parse(safe);
+    } catch (e) {
+        state.safeCommands = ['pwd', 'ls', 'whoami', 'date', 'gcc', './', 'which'];
+    }
+}
 
 function saveToMemory(chatId, role, text) {
     const id = chatId.toString();
-    if (!chatMemory.has(id)) chatMemory.set(id, []);
-    chatMemory.get(id).push({ role, text });
-    if (chatMemory.get(id).length > 30) chatMemory.get(id).shift();
-    fs.writeFile(MEMORY_FILE, JSON.stringify(Object.fromEntries(chatMemory), null, 2)).catch(()=>{});
+    if (!state.chatMemory.has(id)) state.chatMemory.set(id, []);
+    state.chatMemory.get(id).push({ role, text });
+    if (state.chatMemory.get(id).length > 30) state.chatMemory.get(id).shift();
+    fs.writeFile(state.MEMORY_FILE, JSON.stringify(Object.fromEntries(state.chatMemory), null, 2)).catch(()=>{});
 }
 
 function getMemoryString(chatId) {
-  const history = chatMemory.get(chatId.toString()) || [];
+  const history = state.chatMemory.get(chatId.toString()) || [];
   return history.length === 0 ? "No prior context." : history.map(msg => `${msg.role}: ${msg.text}`).join('\n');
 }
 
 // ==========================================
-// 4. OLLAMA HEALTH CHECK
+// 4. PIPELINE HELPERS & HEALTH CHECK
 // ==========================================
 async function verifyOllama() {
-    console.log(`📡 Checking Ollama connection at ${process.env.OLLAMA_IP}...`);
+    logger.info("Health Check", `Checking Ollama connection at ${process.env.OLLAMA_IP}...`);
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -96,17 +120,20 @@ async function verifyOllama() {
         
         const data = await res.json();
         const exists = (data.models || []).some(m => m.name.includes(CORE_MODEL));
-        if (exists) console.log(`✅ Ollama Online. Model [${CORE_MODEL}] is ready.`);
-        return exists;
+
+        if (exists) {
+            logger.info("Health Check", `✅ Ollama Online. Model [${CORE_MODEL}] is ready.`);
+            return true;
+        } else {
+            logger.error("Health Check", `⚠️ Ollama Online, but model [${CORE_MODEL}] was not found.`);
+            return false;
+        }
     } catch (e) {
-        console.error(`❌ Ollama Connection Failed: ${e.message}`);
+        logger.error("Health Check", `❌ Ollama Connection Failed: ${e.message}`);
         return false;
     }
 }
 
-// ==========================================
-// 5. HELPERS
-// ==========================================
 async function startProgress(chatId, text) {
     const msg = await bot.sendMessage(chatId, `⏳ ${text}\n[□□□□□□□□□□] 0%`);
     let step = 0;
@@ -118,15 +145,16 @@ async function startProgress(chatId, text) {
     return { interval, mid: msg.message_id };
 }
 
-async function callOllama(prompt, json = false) {
-    debugLog("Ollama Prompt", prompt);
+async function callOllama(prompt) {
+    logger.debug("Ollama Prompt", prompt);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); 
+    const timeoutId = setTimeout(() => controller.abort(), 300000); 
+    
     try {
         const res = await fetch(OLLAMA_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: CORE_MODEL, prompt, stream: false, keep_alive: -1, format: json ? 'json' : undefined }),
+            body: JSON.stringify({ model: CORE_MODEL, prompt, stream: false, keep_alive: -1, format: 'json' }),
             signal: controller.signal
         });
         clearTimeout(timeoutId);
@@ -136,120 +164,42 @@ async function callOllama(prompt, json = false) {
         return output.trim();
     } catch (e) {
         clearTimeout(timeoutId);
-        throw new Error(e.name === 'AbortError' ? "Ollama request timed out." : `Ollama Error: ${e.message}`);
+        throw new Error(e.name === 'AbortError' ? "Ollama request timed out (took over 5 mins)." : `Ollama Error: ${e.message}`);
     }
 }
 
 // ==========================================
-// 6. HARDCODED COMMANDS (Restored!)
-// ==========================================
-bot.onText(/\/start|\/help/, (msg) => {
-    const helpText = `🤖 <b>Agentic AI Online:</b>
-/files - List Sandbox files
-/read [filename] - Read Sandbox file
-/clear - Wipe memory context
-/safe - View auto-execute CLI list
-/allow [cmd] - Add to auto-execute
-/deny [cmd] - Remove from auto-execute
-/jobs - View scheduled tasks
-/removejob [id] - Delete a task
-/status - Check Ollama health`;
-    bot.sendMessage(msg.chat.id, helpText, { parse_mode: 'HTML' });
-});
-
-bot.onText(/\/clear/, (msg) => {
-    chatMemory.delete(msg.chat.id.toString());
-    fs.writeFile(MEMORY_FILE, JSON.stringify(Object.fromEntries(chatMemory), null, 2)).catch(()=>{});
-    bot.sendMessage(msg.chat.id, '🧹 <b>Memory Cleared!</b>', { parse_mode: 'HTML' });
-});
-
-bot.onText(/\/safe$/, (msg) => bot.sendMessage(msg.chat.id, `🛡️ <b>Safe List:</b>\n<pre>${safeCommands.join('\n')}</pre>`, { parse_mode: 'HTML' }));
-
-bot.onText(/\/allow (.+)/, async (msg, match) => {
-    const cmd = match[1].trim();
-    if (!safeCommands.includes(cmd)) {
-        safeCommands.push(cmd);
-        await fs.writeFile(SAFE_FILE, JSON.stringify(safeCommands, null, 2));
-        bot.sendMessage(msg.chat.id, `✅ <b>Added:</b> <code>${cmd}</code>`, { parse_mode: 'HTML' });
-    }
-});
-
-bot.onText(/\/deny (.+)/, async (msg, match) => {
-    const cmd = match[1].trim();
-    safeCommands = safeCommands.filter(c => c !== cmd);
-    await fs.writeFile(SAFE_FILE, JSON.stringify(safeCommands, null, 2));
-    bot.sendMessage(msg.chat.id, `🚫 <b>Removed:</b> <code>${cmd}</code>`, { parse_mode: 'HTML' });
-});
-
-bot.onText(/\/jobs/, (msg) => bot.sendMessage(msg.chat.id, cronAgent.listJobs(), { parse_mode: 'HTML' }));
-bot.onText(/\/removejob (.+)/, async (msg, match) => bot.sendMessage(msg.chat.id, await cronAgent.removeJob(match[1].trim()), { parse_mode: 'HTML' }));
-
-bot.onText(/\/files/, async (msg) => {
-    try {
-        const all = await fs.readdir(SANDBOX_DIR);
-        const files = all.filter(f => !f.startsWith('.'));
-        bot.sendMessage(msg.chat.id, `📂 <b>Sandbox:</b>\n<pre>${files.join('\n') || 'Empty'}</pre>`, { parse_mode: 'HTML' });
-    } catch (e) { bot.sendMessage(msg.chat.id, '❌ Error reading sandbox.'); }
-});
-
-bot.onText(/\/read (.+)/, async (msg, match) => {
-    const file = match[1].trim();
-    if (file.includes('..') || file.includes('/')) return;
-    try {
-        const data = await fs.readFile(path.join(SANDBOX_DIR, file), 'utf8');
-        bot.sendMessage(msg.chat.id, `📄 <b>sandbox/${file}:</b>\n<pre>${data.substring(0, 3500)}</pre>`, { parse_mode: 'HTML' });
-    } catch (e) { bot.sendMessage(msg.chat.id, '❌ File not found.'); }
-});
-
-bot.onText(/\/status/, async (msg) => {
-    bot.sendMessage(msg.chat.id, await verifyOllama() ? "✅ Ollama connection is healthy." : "❌ Ollama is unreachable.");
-});
-
-// ==========================================
-// 7. VOICE INPUT HANDLER
+// 5. MAIN TEXT & VOICE ROUTER
 // ==========================================
 bot.on('voice', async (msg) => {
     const chatId = msg.chat.id;
     const fileId = msg.voice.file_id;
     const fileLink = await bot.getFileLink(fileId);
     
-    console.log(`🎤 Received Voice Message: ${fileLink}`);
+    logger.info("Received Voice Message", `Link: ${fileLink}`);
     let prog = await startProgress(chatId, "Downloading & Transcribing Voice...");
     
     try {
-        // [STT LOGIC WILL GO HERE]
-        // Example: const transcribedText = await voiceAgent.transcribe(fileLink);
-        
-        // For now, hardcode a mock transcript:
         const transcribedText = "This is a simulated transcript. How are you?";
-        
         clearInterval(prog.interval);
         bot.deleteMessage(chatId, prog.mid).catch(()=>{});
+        bot.sendMessage(chatId, `🗣️ <i>You said: "${transcribedText}"</i>\n(STT not yet installed. Proceeding...)`, { parse_mode: 'HTML' });
         
-        bot.sendMessage(chatId, `🗣️ <i>You said: "${transcribedText}"</i>\n(Speech-to-Text not yet installed. Proceeding with text response...)`, { parse_mode: 'HTML' });
-        
-        // Feed the text back into the main brain!
         await processPipeline(chatId, transcribedText, false);
-        
     } catch (e) {
         clearInterval(prog.interval);
+        logger.error("Voice Error", e.message);
         bot.sendMessage(chatId, `❌ <b>Voice Error:</b> ${e.message}`, { parse_mode: 'HTML' });
     }
 });
 
-// ==========================================
-// 8. MAIN TEXT ROUTER
-// ==========================================
 bot.on('message', async (msg) => {
     if (!msg.text || msg.text.startsWith('/') || msg.voice) return;
     await processPipeline(msg.chat.id, msg.text, false);
 });
 
-// ==========================================
-// 9. THE CORE AI PIPELINE
-// ==========================================
 async function processPipeline(chatId, userText, isCron = false) {
-    debugLog(isCron ? "CRON" : "USER", userText);
+    logger.debug(isCron ? "Incoming CRON Pipeline" : "Incoming USER Pipeline", userText);
     saveToMemory(chatId, isCron ? 'System' : 'User', userText);
 
     let prog;
@@ -257,10 +207,13 @@ async function processPipeline(chatId, userText, isCron = false) {
 
     try {
         const promptTemplate = await fs.readFile(PROMPT_FILE, 'utf8');
-        const finalPrompt = promptTemplate.replace('{{CONVERSATION_HISTORY}}', getMemoryString(chatId)).replace('{{USER_MESSAGE}}', userText);
+        let finalPrompt = promptTemplate
+            .replace('{{CONVERSATION_HISTORY}}', getMemoryString(chatId))
+            .replace('{{USER_MESSAGE}}', userText)
+            .replace('{{DYNAMIC_SKILLS}}', dynamicPromptAdditions);
 
-        const raw = await callOllama(finalPrompt, true);
-        debugLog("LLM Result", raw);
+        const raw = await callOllama(finalPrompt);
+        logger.debug("LLM Result", raw);
         if (!raw || raw === "") throw new Error("Empty response from Ollama.");
 
         let cleanStr = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json|```/gi, '').trim();
@@ -273,82 +226,62 @@ async function processPipeline(chatId, userText, isCron = false) {
         if (!isCron) { clearInterval(prog.interval); bot.deleteMessage(chatId, prog.mid).catch(()=>{}); }
 
         const intent = String(dec.intent).toLowerCase();
-        let out = dec.output || '';
+        const skillContext = { bot, chatId, state, processPipeline };
 
-        // Intent Logic
-        if (intent === 'news') return bot.sendMessage(chatId, await newsAgent.fetchNews(), { parse_mode: 'HTML', disable_web_page_preview: true });
-        if (intent === 'weather') return bot.sendMessage(chatId, await weatherAgent.getWeather(out), { parse_mode: 'HTML' });
-
-        if (intent === 'sap') {
-            const sapProg = await startProgress(chatId, `Engaging SAP Agent (${dec.action})...`);
+        if (activeSkills[intent]) {
+            let skillProg = await startProgress(chatId, `Engaging [${intent}] skill...`);
             try {
-                const res = await sapAgent.querySap(out, dec.action || "gui");
-                clearInterval(sapProg.interval);
-                return bot.editMessageText(res, { chat_id: chatId, message_id: sapProg.mid, parse_mode: 'HTML' });
+                const result = await activeSkills[intent].execute(dec, skillContext);
+                clearInterval(skillProg.interval);
+                bot.deleteMessage(chatId, skillProg.mid).catch(()=>{});
+                
+                if (result) bot.sendMessage(chatId, result, { parse_mode: 'HTML', disable_web_page_preview: true });
             } catch (e) {
-                clearInterval(sapProg.interval);
-                return bot.editMessageText(`❌ <b>SAP Error:</b> ${e.message}`, { chat_id: chatId, message_id: sapProg.mid, parse_mode: 'HTML' });
+                clearInterval(skillProg.interval);
+                logger.error(`Skill Error (${intent})`, e.message);
+                bot.editMessageText(`❌ <b>Skill Error (${intent}):</b> ${e.message}`, { chat_id: chatId, message_id: skillProg.mid, parse_mode: 'HTML' });
             }
-        }
-
-        if (intent === 'write_file') {
-            const filename = dec.filename || 'snippet.txt';
-            let content = out;
-            if (content.includes('```')) {
-                const m = content.match(/```[a-zA-Z]*\n?([\s\S]*?)```/);
-                if (m) content = m[1].trim();
-            } else if (filename.endsWith('.c') && content.includes('#include')) {
-                content = content.substring(content.indexOf('#include'));
-            }
-            await fs.writeFile(path.join(SANDBOX_DIR, filename), content, 'utf8');
-            return bot.sendMessage(chatId, `💾 <b>File Created:</b> <code>sandbox/${filename}</code>\n<pre>${content}</pre>`, { parse_mode: 'HTML' });
-        }
-
-        if (intent === 'cli') {
-            if (safeCommands.some(s => out.trim().startsWith(s))) {
-                return bot.sendMessage(chatId, `✅ <b>Result:</b>\n<pre>${await cliAgent.runCommand(out)}</pre>`, { parse_mode: 'HTML' });
-            } else {
-                const cid = Date.now().toString();
-                pendingCommands.set(cid, out);
-                return bot.sendMessage(chatId, `💻 <b>Confirm:</b> <pre>${out}</pre>`, {
-                    parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: 'Run', callback_data: `run_${cid}` }, { text: 'Cancel', callback_data: 'cancel' }]] }
-                });
-            }
-        }
-
-        if (intent === 'chat') {
-            // Check if user wants audio reply
-            if (userText.toLowerCase().includes("voice") || userText.toLowerCase().includes("speak") || userText.toLowerCase().includes("say")) {
+        } 
+        else if (intent === 'chat') {
+            const out = dec.output || "I'm not sure how to respond to that.";
+            saveToMemory(chatId, 'Assistant', out);
+            
+            if (userText.toLowerCase().includes("voice") || userText.toLowerCase().includes("speak")) {
                 let ttsProg = await startProgress(chatId, "Generating Audio...");
-                const audioPath = await voiceAgent.generateSpeech(out);
+                const audioPath = await voiceHelper.generateSpeech(out, SANDBOX_DIR);
                 clearInterval(ttsProg.interval);
                 bot.deleteMessage(chatId, ttsProg.mid).catch(()=>{});
                 await bot.sendVoice(chatId, audioPath, { caption: out });
                 return fs.unlink(audioPath).catch(()=>{});
             }
             return bot.sendMessage(chatId, out);
+        } else {
+            logger.error("Skill Missing", `Tried to use ${intent} but folder not found.`);
+            bot.sendMessage(chatId, `⚠️ I decided to use the <b>${intent}</b> skill, but it is not installed.`, { parse_mode: 'HTML' });
         }
 
     } catch (e) {
         if (!isCron && prog) clearInterval(prog.interval);
+        logger.error("Pipeline Error", e.message);
         bot.sendMessage(chatId, `❌ <b>Error:</b> ${e.message}`, { parse_mode: 'HTML' });
     }
 }
 
-// CLI Approval
-bot.on('callback_query', async (q) => {
-    const { message: { chat: { id: chatId }, message_id: mid }, data } = q;
-    if (data === 'cancel') return bot.editMessageText('🚫 Cancelled.', { chat_id: chatId, message_id: mid });
-    if (data.startsWith('run_')) {
-        const cmd = pendingCommands.get(data.split('_')[1]);
-        if (!cmd) return;
-        bot.editMessageText(`⚙️ Executing...`, { chat_id: chatId, message_id: mid });
-        try {
-            bot.editMessageText(`✅ <b>Complete:</b>\n<pre>${await cliAgent.runCommand(cmd)}</pre>`, { chat_id: chatId, message_id: mid, parse_mode: 'HTML' });
-        } catch (e) {
-            bot.editMessageText(`❌ <b>Failed:</b>\n<pre>${e.message}</pre>`, { chat_id: chatId, message_id: mid, parse_mode: 'HTML' });
-        }
-    }
-});
+// ==========================================
+// 6. INITIALIZATION
+// ==========================================
+async function startSystem() {
+    // Run the 7-day log cleanup before doing anything else
+    await logger.cleanOldLogs();
+    
+    await loadData();
+    await loadSkills();
+    
+    commandHandler.register(bot, state);
+    cronHelper.init((chatId, task, isCron) => processPipeline(chatId, task, isCron));
+    
+    await verifyOllama();
+    logger.info("System", "🤖 Agentic Bot Online (Modular V2).");
+}
 
-verifyOllama().then(() => console.log("🤖 Agentic Bot Online."));
+startSystem();

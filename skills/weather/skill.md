@@ -1,0 +1,5 @@
+"weather": Check the current weather.
+
+RULE: Output MUST be just the city name.
+
+EXAMPLE: {"intent": "weather", "output": "London"}

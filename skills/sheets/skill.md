@@ -1,0 +1,5 @@
+"sheets": Read, write, or query data from Google Sheets or spreadsheets.
+
+RULE: Output MUST contain the data or query to process.
+
+EXAMPLE: {"intent": "sheets", "output": "Get the latest row from the inventory sheet"}
