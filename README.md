@@ -2,7 +2,7 @@
 
 > 🌱 **A Personal Journey:** This repository represents my personal journey learning how to code and build Artificial Intelligence systems. I started this project to understand local LLMs, Node.js, and homelab architecture. What began as a simple script has evolved into a modular, voice-activated AI Agent and System Administrator. This code documents my progress, my mistakes, and my "aha!" moments. I hope it inspires others learning to build their own AI companions!
 
-An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a C/Python Coder, and a Remote SAP GUI Controller. Powered by local LLMs (Ollama) and designed with a highly extensible **Plug-n-Play Skill Registry**.
+An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a C/Python Coder, and a Remote SAP GUI Controller. **Note: This agent is accessed exclusively via the Telegram app—there is no Web UI or Terminal User Interface (TUI).** Powered by local LLMs (Ollama) and designed with a highly extensible **Plug-n-Play Skill Registry**.
 
 ## 🚀 Core Capabilities
 - **Dynamic Skill Registry:** Simply drop a new folder into `skills/` with a `skill.js` and `skill.md`, and the bot automatically learns how to use it on boot! No core code edits required.
@@ -102,7 +102,6 @@ SAP_PASSWORD=your_actual_password
 # 5. LOGGING & MICROSERVICES
 # ==========================================
 LOG_RETENTION_DAYS=7
-# Wrapped in quotes to prevent clickable hyperlinking in markdown
 STT_SERVER_URL="[http://192.168.1.156:3000/transcribe](http://192.168.1.156:3000/transcribe)"
 ```
 
