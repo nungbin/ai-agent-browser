@@ -12,8 +12,7 @@ const voiceHelper = require('./helpers/voiceHelper');
 const cronHelper = require('./helpers/cronHelper');
 const logger = require('./helpers/logger');
 
-// 0. GLOBAL ERROR HANDLERS (Using the custom logger)
-process.on('uncaughtException', (err) => logger.error('CRITICAL UNCAUGHT EXCEPTION', err.stack));
+process.on('uncaughtException', (err) => logger.error('CRITICAL EXCEPTION', err.stack));
 process.on('unhandledRejection', (reason) => logger.error('UNHANDLED REJECTION', reason.stack || reason));
 
 const DATA_DIR = path.join(__dirname, 'data');
@@ -37,19 +36,16 @@ const OLLAMA_URL = `http://${process.env.OLLAMA_IP}:11434/api/generate`;
 const CORE_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';  
 const bot = new TelegramBot(token, { polling: true });
 
-// Shared State for Helpers & Skills
 const state = {
     chatMemory: new Map(),
     safeCommands: [],
     pendingCommands: new Map(),
+    personaEnabled: false, // Default to Persona OFF
     MEMORY_FILE: path.join(DATA_DIR, 'memory.json'),
     SAFE_FILE: path.join(DATA_DIR, 'safe_commands.json'),
     SANDBOX_DIR: SANDBOX_DIR
 };
 
-// ==========================================
-// 2. DYNAMIC SKILL REGISTRY (The Magic)
-// ==========================================
 const activeSkills = {};
 let dynamicPromptAdditions = "";
 
@@ -60,24 +56,19 @@ async function loadSkills() {
         for (const folder of folders) {
             const folderPath = path.join(skillsDir, folder);
             const stat = await fs.stat(folderPath);
-            
             if (stat.isDirectory()) {
                 try {
                     const skillModule = require(path.join(folderPath, 'skill.js'));
                     activeSkills[skillModule.name] = skillModule;
-                    
                     const mdContent = await fs.readFile(path.join(folderPath, 'skill.md'), 'utf8');
                     dynamicPromptAdditions += `\n${mdContent.trim()}\n`;
-                    
                     logger.info("Skill Loaded", skillModule.name);
                 } catch (e) {
                     logger.error(`Failed to load skill in /${folder}`, e.message);
                 }
             }
         }
-    } catch (e) {
-        logger.info("System", "No 'skills' directory found yet.");
-    }
+    } catch (e) { }
 }
 
 // ==========================================
@@ -98,7 +89,7 @@ function saveToMemory(chatId, role, text) {
     const id = chatId.toString();
     if (!state.chatMemory.has(id)) state.chatMemory.set(id, []);
     state.chatMemory.get(id).push({ role, text });
-    if (state.chatMemory.get(id).length > 30) state.chatMemory.get(id).shift();
+    if (state.chatMemory.get(id).length > parseInt(process.env.MEMORY_LIMIT || 30)) state.chatMemory.get(id).shift();
     fs.writeFile(state.MEMORY_FILE, JSON.stringify(Object.fromEntries(state.chatMemory), null, 2)).catch(()=>{});
 }
 
@@ -108,29 +99,27 @@ function getMemoryString(chatId) {
 }
 
 // ==========================================
-// 4. PIPELINE HELPERS & HEALTH CHECK
+// 4. PIPELINE HELPERS
 // ==========================================
-async function verifyOllama() {
-    logger.info("Health Check", `Checking Ollama connection at ${process.env.OLLAMA_IP}...`);
+async function callOllama(prompt) {
+    logger.debug("Ollama Prompt", prompt);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); 
+    
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(`http://${process.env.OLLAMA_IP}:11434/api/tags`, { signal: controller.signal });
+        const res = await fetch(OLLAMA_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: CORE_MODEL, prompt, stream: false, keep_alive: -1, format: 'json' }),
+            signal: controller.signal
+        });
         clearTimeout(timeoutId);
-        
         const data = await res.json();
-        const exists = (data.models || []).some(m => m.name.includes(CORE_MODEL));
-
-        if (exists) {
-            logger.info("Health Check", `✅ Ollama Online. Model [${CORE_MODEL}] is ready.`);
-            return true;
-        } else {
-            logger.error("Health Check", `⚠️ Ollama Online, but model [${CORE_MODEL}] was not found.`);
-            return false;
-        }
+        let output = data.response || data.thinking || "";
+        return output.trim();
     } catch (e) {
-        logger.error("Health Check", `❌ Ollama Connection Failed: ${e.message}`);
-        return false;
+        clearTimeout(timeoutId);
+        throw new Error(e.name === 'AbortError' ? "Ollama request timed out." : `Ollama Error: ${e.message}`);
     }
 }
 
@@ -145,159 +134,196 @@ async function startProgress(chatId, text) {
     return { interval, mid: msg.message_id };
 }
 
-async function callOllama(prompt) {
-    logger.debug("Ollama Prompt", prompt);
-    const controller = new AbortController();
-    
-    // INCREASED TIMEOUT: 5 Minutes (300000ms) for cold starting models
-    const timeoutId = setTimeout(() => controller.abort(), 300000); 
-    
-    try {
-        const res = await fetch(OLLAMA_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: CORE_MODEL, prompt, stream: false, keep_alive: -1, format: 'json' }),
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        const data = await res.json();
-        let output = data.response;
-        if (!output || output.trim() === "") output = data.thinking || "";
-        return output.trim();
-    } catch (e) {
-        clearTimeout(timeoutId);
-        throw new Error(e.name === 'AbortError' ? "Ollama request timed out (took over 5 mins)." : `Ollama Error: ${e.message}`);
+// === BUTTON CLICK HANDLER FOR UNSAFE COMMANDS ===
+bot.on('callback_query', async (query) => {
+    const chatId = query.message.chat.id;
+    const msgId = query.message.message_id;
+    const data = query.data;
+
+    if (data === 'cancel') {
+        bot.editMessageText("❌ Command cancelled.", { chat_id: chatId, message_id: msgId });
+    } else if (data.startsWith('run_')) {
+        const cid = data.split('_')[1];
+        const cmd = state.pendingCommands.get(cid);
+        if (cmd) {
+            bot.editMessageText(`⚙️ Executing...\n<pre>${cmd.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`, { chat_id: chatId, message_id: msgId, parse_mode: 'HTML' });
+            try {
+                const resultText = await activeSkills['cli'].runCommand(cmd);
+                bot.editMessageText(`💻 <b>Command:</b> <code>${cmd.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>\n✅ <b>Result:</b>\n<pre>${resultText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`, { chat_id: chatId, message_id: msgId, parse_mode: 'HTML' });
+            } catch(e) {
+                bot.editMessageText(`❌ Error: ${e.message}`, { chat_id: chatId, message_id: msgId });
+            }
+            state.pendingCommands.delete(cid);
+        } else {
+            bot.editMessageText("❌ Command expired or not found.", { chat_id: chatId, message_id: msgId });
+        }
     }
-}
+    bot.answerCallbackQuery(query.id);
+});
 
 // ==========================================
 // 5. MAIN TEXT & VOICE ROUTER
 // ==========================================
 bot.on('voice', async (msg) => {
     const chatId = msg.chat.id;
-    const fileId = msg.voice.file_id;
-    const fileLink = await bot.getFileLink(fileId);
-    
-    logger.info("Received Voice Message", `Link: ${fileLink}`);
-    let prog = await startProgress(chatId, "Downloading & Transcribing Voice...");
+    const fileLink = await bot.getFileLink(msg.voice.file_id);
+    let prog = await startProgress(chatId, "Listening...");
     
     try {
         const sttUrl = process.env.STT_SERVER_URL;
-        if (!sttUrl) throw new Error("STT_SERVER_URL is not configured in .env");
-
-        // Send audio to STT Microservice for CPU transcription
         const transcribedText = await voiceHelper.transcribeAudio(fileLink, sttUrl, SANDBOX_DIR);
+        if (!transcribedText || transcribedText.trim() === "") throw new Error("Could not hear audio clearly.");
         
-        if (!transcribedText || transcribedText.trim() === "") {
-            throw new Error("Could not hear any words in the audio.");
-        }
-
         clearInterval(prog.interval);
         bot.deleteMessage(chatId, prog.mid).catch(()=>{});
+        bot.sendMessage(chatId, `🗣️ <i>"${transcribedText}"</i>`, { parse_mode: 'HTML' });
         
-        // Echo back what it heard
-        bot.sendMessage(chatId, `🗣️ <i>You said: "${transcribedText}"</i>`, { parse_mode: 'HTML' });
-        
-        // Feed the transcribed text directly into the AI Brain!
-        await processPipeline(chatId, transcribedText, false);
-        
+        await processPipeline(chatId, transcribedText, false, true); 
     } catch (e) {
-        if (prog) clearInterval(prog.interval);
-        logger.error("Voice Error", e.message);
+        clearInterval(prog.interval);
         bot.sendMessage(chatId, `❌ <b>Voice Error:</b> ${e.message}`, { parse_mode: 'HTML' });
     }
 });
 
 bot.on('message', async (msg) => {
     if (!msg.text || msg.text.startsWith('/') || msg.voice) return;
-    await processPipeline(msg.chat.id, msg.text, false);
+    await processPipeline(msg.chat.id, msg.text, false, false);
 });
 
-async function processPipeline(chatId, userText, isCron = false) {
-    logger.debug(isCron ? "Incoming CRON Pipeline" : "Incoming USER Pipeline", userText);
+async function processPipeline(chatId, userText, isCron = false, isVoiceInput = false) {
     saveToMemory(chatId, isCron ? 'System' : 'User', userText);
-
-    let prog;
-    if (!isCron) prog = await startProgress(chatId, "Thinking...");
+    let prog; if (!isCron) prog = await startProgress(chatId, "Thinking...");
 
     try {
         const promptTemplate = await fs.readFile(PROMPT_FILE, 'utf8');
+        
+        // DYNAMIC PERSONA TOGGLE LOGIC
+        const isPersonaOn = state.personaEnabled !== false;
+        
+        const BOT_PERSONA = isPersonaOn ? (process.env.BOT_PERSONA || 'You are an advanced AI assistant.') 
+                                        : 'You are a strict command routing engine. Do NOT generate conversational replies. Route everything to the correct skill immediately.';
+        const BOT_NAME = isPersonaOn ? (process.env.BOT_NAME || 'Assistant') : 'System Router';
+        const USER_NAME = isPersonaOn ? (process.env.USER_NAME || 'User') : 'Administrator';
+
         let finalPrompt = promptTemplate
-            .replace('{{CONVERSATION_HISTORY}}', getMemoryString(chatId))
-            .replace('{{USER_MESSAGE}}', userText)
-            .replace('{{DYNAMIC_SKILLS}}', dynamicPromptAdditions);
+            .replace(/\{\{BOT_PERSONA\}\}/g, BOT_PERSONA)
+            .replace(/\{\{BOT_NAME\}\}/g, BOT_NAME)
+            .replace(/\{\{USER_NAME\}\}/g, USER_NAME)
+            .replace(/\{\{CONVERSATION_HISTORY\}\}/g, getMemoryString(chatId))
+            .replace(/\{\{USER_MESSAGE\}\}/g, userText)
+            .replace(/\{\{DYNAMIC_SKILLS\}\}/g, dynamicPromptAdditions);
 
         const raw = await callOllama(finalPrompt);
-        logger.debug("LLM Result", raw);
         if (!raw || raw === "") throw new Error("Empty response from Ollama.");
 
         let cleanStr = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json|```/gi, '').trim();
-        const firstBrace = cleanStr.indexOf('{');
-        const lastBrace = cleanStr.lastIndexOf('}');
-        if (firstBrace === -1 || lastBrace === -1) throw new Error("Invalid JSON.");
-        cleanStr = cleanStr.substring(firstBrace, lastBrace + 1);
-
+        cleanStr = cleanStr.substring(cleanStr.indexOf('{'), cleanStr.lastIndexOf('}') + 1);
         const dec = JSON.parse(cleanStr);
+        
         if (!isCron) { clearInterval(prog.interval); bot.deleteMessage(chatId, prog.mid).catch(()=>{}); }
 
         const intent = String(dec.intent).toLowerCase();
-        const skillContext = { bot, chatId, state, processPipeline };
+        const wantsVoice = isVoiceInput || userText.toLowerCase().includes("voice") || userText.toLowerCase().includes("speak");
 
+        // ONLY output conversational reply if Persona is ON
+        if (dec.conversational_reply && intent !== 'chat' && isPersonaOn) {
+            saveToMemory(chatId, 'Assistant', dec.conversational_reply);
+            if (wantsVoice) {
+                try {
+                    const audioPath = await voiceHelper.generateSpeech(dec.conversational_reply, SANDBOX_DIR);
+                    await bot.sendVoice(chatId, audioPath, { caption: `💬 ${dec.conversational_reply}` });
+                    fs.unlink(audioPath).catch(()=>{});
+                } catch (e) { 
+                    bot.sendMessage(chatId, `💬 <i>${dec.conversational_reply}</i>`, { parse_mode: 'HTML' })
+                       .catch(() => bot.sendMessage(chatId, `💬 ${dec.conversational_reply}`)); 
+                }
+            } else {
+                bot.sendMessage(chatId, `💬 <i>${dec.conversational_reply}</i>`, { parse_mode: 'HTML' })
+                   .catch(() => bot.sendMessage(chatId, `💬 ${dec.conversational_reply}`));
+            }
+        }
+
+        // 3. EXECUTE THE SKILL
         if (activeSkills[intent]) {
-            let skillProg = await startProgress(chatId, `Engaging [${intent}] skill...`);
+            let skillProg = await startProgress(chatId, `Executing task...`);
             try {
-                const result = await activeSkills[intent].execute(dec, skillContext);
+                const escapeHTML = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const result = await activeSkills[intent].execute(dec, { bot, chatId, state, processPipeline, escapeHTML });
+                
                 clearInterval(skillProg.interval);
                 bot.deleteMessage(chatId, skillProg.mid).catch(()=>{});
                 
-                if (result) bot.sendMessage(chatId, result, { parse_mode: 'HTML', disable_web_page_preview: true });
+                if (result) {
+                    bot.sendMessage(chatId, result, { parse_mode: 'HTML', disable_web_page_preview: true })
+                       .catch(err => {
+                           logger.error("Telegram HTML Error", err.message);
+                           bot.sendMessage(chatId, result, { disable_web_page_preview: true });
+                       });
+                }
             } catch (e) {
                 clearInterval(skillProg.interval);
-                logger.error(`Skill Error (${intent})`, e.message);
-                bot.editMessageText(`❌ <b>Skill Error (${intent}):</b> ${e.message}`, { chat_id: chatId, message_id: skillProg.mid, parse_mode: 'HTML' });
+                bot.editMessageText(`❌ <b>Error:</b> ${e.message}`, { chat_id: chatId, message_id: skillProg.mid, parse_mode: 'HTML' })
+                   .catch(() => bot.editMessageText(`❌ Error: ${e.message}`, { chat_id: chatId, message_id: skillProg.mid }));
             }
         } 
         else if (intent === 'chat') {
-            const out = dec.output || "I'm not sure how to respond to that.";
+            if (!isPersonaOn) {
+                return bot.sendMessage(chatId, "🔇 <i>Persona is disabled. Please provide a valid CLI command or skill request.</i>", { parse_mode: 'HTML' });
+            }
+
+            const out = dec.conversational_reply || dec.output || "I'm not sure how to respond to that.";
             saveToMemory(chatId, 'Assistant', out);
-            
-            // Trigger TTS audio if requested verbally or via text
-            if (userText.toLowerCase().includes("voice") || userText.toLowerCase().includes("speak") || userText.toLowerCase().includes("say")) {
+            if (wantsVoice) {
                 let ttsProg = await startProgress(chatId, "Generating Audio...");
-                const audioPath = await voiceHelper.generateSpeech(out, SANDBOX_DIR);
-                clearInterval(ttsProg.interval);
-                bot.deleteMessage(chatId, ttsProg.mid).catch(()=>{});
-                await bot.sendVoice(chatId, audioPath, { caption: out });
-                return fs.unlink(audioPath).catch(()=>{});
+                try {
+                    const audioPath = await voiceHelper.generateSpeech(out, SANDBOX_DIR);
+                    clearInterval(ttsProg.interval);
+                    bot.deleteMessage(chatId, ttsProg.mid).catch(()=>{});
+                    await bot.sendVoice(chatId, audioPath, { caption: out });
+                    return fs.unlink(audioPath).catch(()=>{});
+                } catch(e) { 
+                    clearInterval(ttsProg.interval);
+                    bot.deleteMessage(chatId, ttsProg.mid).catch(()=>{});
+                    logger.error("TTS Error", e.message);
+                    return bot.sendMessage(chatId, out); 
+                }
             }
             return bot.sendMessage(chatId, out);
-        } else {
-            logger.error("Skill Missing", `Tried to use ${intent} but folder not found.`);
-            bot.sendMessage(chatId, `⚠️ I decided to use the <b>${intent}</b> skill, but it is not installed.`, { parse_mode: 'HTML' });
         }
 
     } catch (e) {
         if (!isCron && prog) clearInterval(prog.interval);
         logger.error("Pipeline Error", e.message);
-        bot.sendMessage(chatId, `❌ <b>Error:</b> ${e.message}`, { parse_mode: 'HTML' });
+        bot.sendMessage(chatId, `❌ <b>Error:</b> ${e.message}`, { parse_mode: 'HTML' })
+           .catch(() => bot.sendMessage(chatId, `❌ Error: ${e.message}`));
     }
 }
 
 // ==========================================
 // 6. INITIALIZATION
 // ==========================================
+async function checkOllama() {
+    logger.info("AI Check", `Pinging Ollama at ${process.env.OLLAMA_IP}...`);
+    try {
+        const res = await fetch(`http://${process.env.OLLAMA_IP}:11434/api/tags`);
+        if (!res.ok) throw new Error("Bad status code");
+        logger.info("AI Check", "✅ Ollama is online and responsive.");
+    } catch (e) {
+        logger.error("AI Check", `❌ Could not connect to Ollama: ${e.message}`);
+    }
+}
+
 async function startSystem() {
-    // Run the configurable log cleanup before doing anything else
     await logger.cleanOldLogs();
-    
+    await checkOllama();
     await loadData();
     await loadSkills();
-    
     commandHandler.register(bot, state);
     cronHelper.init((chatId, task, isCron) => processPipeline(chatId, task, isCron));
     
-    await verifyOllama();
-    logger.info("System", "🤖 Agentic Bot Online (Modular V2).");
+    // Dynamically display whether Persona is ON or OFF at startup
+    const status = state.personaEnabled ? "ON" : "OFF";
+    logger.info("System", `🤖 ${process.env.BOT_NAME || 'Agentic Bot'} Online (Persona is ${status}).`);
 }
 
 startSystem();

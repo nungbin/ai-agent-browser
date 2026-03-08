@@ -7,7 +7,6 @@ const OLLAMA_IP = process.env.OLLAMA_IP || '127.0.0.1';
 const CORE_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
 const OLLAMA_URL = `http://${OLLAMA_IP}:11434/api/generate`;
 
-// Define the tests (Notice the new expectedFilename check!)
 const testCases = [
     { prompt: "get me news", expectedIntent: "news" },
     { prompt: "what is the weather in London", expectedIntent: "weather" },
@@ -19,76 +18,52 @@ const testCases = [
 ];
 
 async function loadDynamicPrompt() {
-    console.log("Loading dynamic skills from ../skills...");
     let dynamicPromptAdditions = "";
     const skillsDir = path.join(__dirname, '..', 'skills');
-    
     try {
         const folders = await fs.readdir(skillsDir);
         for (const folder of folders) {
-            const mdPath = path.join(skillsDir, folder, 'skill.md');
             try {
-                const mdContent = await fs.readFile(mdPath, 'utf8');
+                const mdContent = await fs.readFile(path.join(skillsDir, folder, 'skill.md'), 'utf8');
                 dynamicPromptAdditions += `\n${mdContent.trim()}\n`;
             } catch (e) { }
         }
-    } catch(e) { console.error("Failed to read skills directory:", e); }
+    } catch(e) { }
     
-    const basePromptPath = path.join(__dirname, '..', 'prompts', 'system_prompt.txt');
-    const promptTemplate = await fs.readFile(basePromptPath, 'utf8');
-    
+    const promptTemplate = await fs.readFile(path.join(__dirname, '..', 'prompts', 'system_prompt.txt'), 'utf8');
     return promptTemplate.replace('{{DYNAMIC_SKILLS}}', dynamicPromptAdditions);
 }
 
 async function testOllama() {
     console.log(`\n🧪 Starting Router Regression Test against ${CORE_MODEL}\n`);
-    let basePrompt;
-    try { basePrompt = await loadDynamicPrompt(); } catch (error) { return console.error("❌ Failed to build prompt:", error); }
-
+    let basePrompt = await loadDynamicPrompt();
     let passed = 0;
     
     for (const test of testCases) {
         process.stdout.write(`Testing: "${test.prompt}"... `);
         const finalPrompt = basePrompt
+            .replace('{{BOT_PERSONA}}', 'You are an AI.')
+            .replace('{{BOT_NAME}}', 'TestBot')
+            .replace('{{USER_NAME}}', 'Tester')
             .replace('{{CONVERSATION_HISTORY}}', 'No prior context.')
             .replace('{{USER_MESSAGE}}', test.prompt);
 
         try {
             const res = await fetch(OLLAMA_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ model: CORE_MODEL, prompt: finalPrompt, stream: false, format: 'json' })
             });
-            
             const data = await res.json();
-            let rawStr = data.response || data.thinking || "";
-            
-            let cleanStr = rawStr.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json|```/gi, '').trim();
-            const firstBrace = cleanStr.indexOf('{');
-            const lastBrace = cleanStr.lastIndexOf('}');
-            if (firstBrace === -1 || lastBrace === -1) throw new Error("Invalid JSON");
-            
-            cleanStr = cleanStr.substring(firstBrace, lastBrace + 1);
+            let cleanStr = (data.response || "").replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json|```/gi, '').trim();
+            cleanStr = cleanStr.substring(cleanStr.indexOf('{'), cleanStr.lastIndexOf('}') + 1);
             const parsed = JSON.parse(cleanStr);
             
             if (parsed.intent === test.expectedIntent) {
-                // If the test expects a specific filename, check it!
-                if (test.expectedFilename && parsed.filename !== test.expectedFilename) {
-                    console.log(`❌ FAIL (Expected Filename: ${test.expectedFilename}, Got: ${parsed.filename || 'undefined'})`);
-                } else {
-                    console.log(`✅ PASS (Intent: ${parsed.intent})`);
-                    passed++;
-                }
-            } else {
-                console.log(`❌ FAIL (Expected: ${test.expectedIntent}, Got: ${parsed.intent})`);
-                console.log(`   Output JSON: ${JSON.stringify(parsed)}`);
-            }
-            
-        } catch (error) {
-            console.log(`❌ FAIL (Error: ${error.message})`);
-        }
+                if (test.expectedFilename && parsed.filename !== test.expectedFilename) console.log(`❌ FAIL (Bad Filename)`);
+                else { console.log(`✅ PASS`); passed++; }
+            } else console.log(`❌ FAIL (Got: ${parsed.intent})`);
+        } catch (error) { console.log(`❌ FAIL (${error.message})`); }
     }
     console.log(`\n🏁 Test Complete: ${passed}/${testCases.length} Passed.\n`);
 }
-
 testOllama();

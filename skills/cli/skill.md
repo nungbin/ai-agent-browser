@@ -1,3 +1,5 @@
-- "cli": Run Linux commands or execute local scripts.
+- "cli": Run Linux commands or execute local scripts in the terminal.
   - RULE: Output MUST be the raw bash command to execute.
+  - RULE: When compiling C code, ALWAYS output the command in this format: `gcc file.c -o file`
+  - RULE: When running compiled code, output `./file`
   - EXAMPLE: {"intent": "cli", "output": "ls -la"}

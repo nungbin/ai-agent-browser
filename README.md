@@ -1,5 +1,7 @@
 # 🤖 Agentic AI Coder & SAP Controller (Modular V2)
 
+> 🌱 **A Personal Journey:** This repository represents my personal journey learning how to code and build Artificial Intelligence systems. I started this project to understand local LLMs, Node.js, and homelab architecture. What began as a simple script has evolved into a modular, voice-activated AI Agent and System Administrator. This code documents my progress, my mistakes, and my "aha!" moments. I hope it inspires others learning to build their own AI companions!
+
 An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a C/Python Coder, and a Remote SAP GUI Controller. Powered by local LLMs (Ollama) and designed with a highly extensible **Plug-n-Play Skill Registry**.
 
 ## 🚀 Core Capabilities
@@ -149,3 +151,15 @@ pm2 startup
 # Save the configuration so it boots on next restart
 pm2 save
 ```
+
+## 🖥️ My Homelab & Hardware Specs
+For those curious about the hardware running this local AI architecture, here is my setup:
+
+* **Hypervisor:** Proxmox VE
+* **AI Node:** Ollama Server running `qwen3.5:4b`
+* **Main Bot Node:** Ubuntu LXC
+* **STT Node:** Ubuntu LXC (CPU-only, running `whisper-node` small.en model)
+* **SAP Host:** Remote Windows VM for GUI Automation
+* **CPU:** Intel Core i5
+* **RAM:** 16GB
+* **GPU (For Ollama):** NVIDIA GTX 1060 (6GB VRAM)

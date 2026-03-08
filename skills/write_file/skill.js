@@ -1,37 +1,47 @@
-// File: skills/write_file/skill.js
 const fs = require('fs').promises;
 const path = require('path');
 
 module.exports = {
     name: "write_file",
     execute: async (parsedJson, context) => {
-        const content = parsedJson.output;
+        let filename = parsedJson.filename;
+        let content = parsedJson.output;
         
-        if (!content) {
-            throw new Error("The AI failed to generate the file content.");
+        // SELF-HEALING: If the AI hallucinates and nests JSON inside the "output" field
+        if (typeof content === 'string' && content.trim().startsWith('{') && content.includes('"filename"')) {
+            try {
+                const nested = JSON.parse(content.trim());
+                filename = nested.filename || filename;
+                // It might call it 'content' or 'output' inside the nested JSON
+                content = nested.content || nested.output || content; 
+            } catch (e) {
+                // If it fails to parse, just treat it as raw text
+            }
         }
 
-        // 1. Grab the filename from the AI, or generate a random one if it forgets
-        let rawFileName = parsedJson.filename || `snippet_${Date.now()}.txt`;
-        
-        // 2. SECURITY: Force the filename to be just the file name (no directory traversal attacks)
-        let safeFileName = path.basename(rawFileName);
-        
-        // 3. Construct the absolute path inside the Sandbox
+        // 1. Fallback and Security
+        filename = filename || `snippet_${Date.now()}.txt`;
+        const safeFileName = path.basename(filename);
         const filePath = path.join(context.state.SANDBOX_DIR, safeFileName);
         
-        // 4. Clean up the output if the AI wrapped it in markdown code blocks
-        let cleanContent = content;
-        if (cleanContent.startsWith('```')) {
-            const lines = cleanContent.split('\n');
-            lines.shift(); // Remove the top ```python
-            if (lines[lines.length - 1].startsWith('```')) lines.pop(); // Remove bottom ```
-            cleanContent = lines.join('\n');
+        // 2. Remove markdown artifacts or conversational text mixed with C code
+        if (typeof content === 'string') {
+            if (content.includes('```')) {
+                const m = content.match(/```[a-zA-Z]*\n?([\s\S]*?)```/);
+                if (m) content = m[1].trim();
+            } else if (safeFileName.endsWith('.c') && content.includes('#include')) {
+                content = content.substring(content.indexOf('#include'));
+            }
         }
-
-        // 5. Write the file
-        await fs.writeFile(filePath, cleanContent, 'utf8');
         
-        return `✅ <b>File Created:</b> <code>sandbox/${safeFileName}</code>\n<pre>${cleanContent.substring(0, 500)}${cleanContent.length > 500 ? '...' : ''}</pre>`;
+        // 3. Write the file safely
+        await fs.writeFile(filePath, content, 'utf8');
+        
+        // 4. Escape HTML for Telegram (<stdio.h> fix)
+        const escapedContent = context.escapeHTML 
+            ? context.escapeHTML(content) 
+            : content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        
+        return `💾 <b>File Created:</b> <code>sandbox/${safeFileName}</code>\n<pre>${escapedContent.substring(0, 1000)}${escapedContent.length > 1000 ? '\n...[TRUNCATED]' : ''}</pre>`;
     }
 };

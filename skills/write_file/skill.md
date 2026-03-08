@@ -1,3 +1,4 @@
 - "write_file": Write code or text to a file in the sandbox.
-  - RULE: Output MUST contain the file content. You may include "filename" in the JSON.
-  - EXAMPLE: {"intent": "write_file", "filename": "hello.py", "output": "print('hi')"}
+  - RULE: You MUST provide "filename" (the name of the file) and "output" (the RAW code).
+  - RULE: "output" must contain the raw code only. Do NOT put JSON inside the output string.
+  - EXAMPLE: {"intent": "write_file", "filename": "hello.c", "output": "#include <stdio.h>\nint main() { printf(\"hello\"); return 0; }"}
