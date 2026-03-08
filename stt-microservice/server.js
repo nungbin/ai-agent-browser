@@ -1,3 +1,4 @@
+// File: stt-microservice/server.js (Backup)
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
@@ -14,13 +15,19 @@ app.post('/transcribe', upload.single('audio'), async (req, res) => {
     const inputPath = req.file.path;
     const wavPath = `${inputPath}.wav`;
 
+    console.log(`🎤 Received audio file. Converting to 16kHz WAV...`);
+
     try {
         await new Promise((resolve, reject) => {
             ffmpeg(inputPath).toFormat('wav').audioFrequency(16000).audioChannels(1)
                 .on('end', resolve).on('error', reject).save(wavPath);
         });
-        const transcript = await whisper(wavPath, { modelName: 'base.en' });
+        
+        console.log(`🧠 Transcribing with CPU Whisper (small.en model)...`);
+        const transcript = await whisper(wavPath, { modelName: 'small.en' });
         const fullText = transcript.map(t => t.speech).join(' ').trim();
+        
+        console.log(`✅ Result: "${fullText}"`);
         res.json({ text: fullText });
     } catch (error) {
         console.error("❌ Transcription error:", error);

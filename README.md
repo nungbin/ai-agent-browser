@@ -112,7 +112,7 @@ node bot.js --debug
 ---
 
 ## 🎙️ Installation (STT Whisper Microservice LXC)
-To keep the AI GPU free, Speech-to-Text runs on a separate CPU-only Ubuntu LXC.
+To keep the AI GPU free, Speech-to-Text runs on a separate CPU-only Ubuntu LXC. We use the `small.en` model which provides exceptional accuracy for accents.
 
 1. **Setup the Container:**
 ```bash
@@ -128,6 +128,9 @@ mkdir -p ~/stt-microservice
 cd ~/stt-microservice
 npm init -y
 npm install express multer fluent-ffmpeg whisper-node
+
+# Pre-download the high-accuracy model (Type 'small.en' when prompted)
+npx whisper-node download
 ```
 
 3. **Run on Boot (PM2):**
