@@ -1,4 +1,3 @@
-// File: bot.js
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const path = require('path');
@@ -157,8 +156,29 @@ bot.on('callback_query', async (query) => {
         } else {
             bot.editMessageText("❌ Command expired or not found.", { chat_id: chatId, message_id: msgId });
         }
+    } else {
+        // --- 🌟 NEW: DYNAMIC SKILL BUTTON ROUTING (Grocery) 🌟 ---
+        const parts = data.split('|');
+        const skillName = parts[0];
+        
+        if (activeSkills[skillName]) {
+            try {
+                const parsed = { output: { action: 'button_click', raw_data: data } };
+                const escapeHTML = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const context = { bot, chatId, state, processPipeline, escapeHTML, messageId: msgId };
+                
+                if (typeof activeSkills[skillName].execute === 'function') {
+                    await activeSkills[skillName].execute(parsed, context);
+                } else if (typeof activeSkills[skillName] === 'function') {
+                    await activeSkills[skillName](null, parsed, context); 
+                }
+            } catch (e) {
+                logger.error(`Callback Error [${skillName}]`, e.message);
+                bot.sendMessage(chatId, `❌ Button Error: ${e.message}`);
+            }
+        }
     }
-    bot.answerCallbackQuery(query.id);
+    bot.answerCallbackQuery(query.id).catch(()=>{});
 });
 
 // ==========================================
@@ -197,8 +217,16 @@ async function processPipeline(chatId, userText, isCron = false, isVoiceInput = 
     try {
         const promptTemplate = await fs.readFile(PROMPT_FILE, 'utf8');
         
-        // DYNAMIC PERSONA TOGGLE LOGIC
-        const isPersonaOn = state.personaEnabled !== false;
+        // --- 🌟 NEW: THE WAKE-WORD LOGIC 🌟 ---
+        const lowerText = userText.toLowerCase();
+        const heardName = lowerText.includes('veronica');
+        
+        // Persona is ON if global toggle is ON, or if 'veronica' was spoken
+        const isPersonaOn = state.personaEnabled || heardName;
+        
+        if (heardName && !state.personaEnabled) {
+            logger.info("Wake-Word", `👱‍♀️ 'Veronica' detected! Temporarily enabling personality.`);
+        }
         
         const BOT_PERSONA = isPersonaOn ? (process.env.BOT_PERSONA || 'You are an advanced AI assistant.') 
                                         : 'You are a strict command routing engine. Do NOT generate conversational replies. Route everything to the correct skill immediately.';
@@ -248,7 +276,9 @@ async function processPipeline(chatId, userText, isCron = false, isVoiceInput = 
             let skillProg = await startProgress(chatId, `Executing task...`);
             try {
                 const escapeHTML = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const result = await activeSkills[intent].execute(dec, { bot, chatId, state, processPipeline, escapeHTML });
+                
+                // Passed usePersona to context so skills know if they should talk!
+                const result = await activeSkills[intent].execute(dec, { bot, chatId, state, processPipeline, escapeHTML, usePersona: isPersonaOn });
                 
                 clearInterval(skillProg.interval);
                 bot.deleteMessage(chatId, skillProg.mid).catch(()=>{});

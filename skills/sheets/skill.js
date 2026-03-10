@@ -1,28 +1,36 @@
 // File: skills/sheets/skill.js
-// const { google } = require('googleapis'); // Uncomment if using official Google APIs
+const logger = require('../../helpers/logger');
+const fs = require('fs');
+const path = require('path');
 
 module.exports = {
     name: "sheets",
-    execute: async (parsedJson, context) => {
-        const query = parsedJson.output;
+    execute: async (parsed, context) => {
+        const payload = typeof parsed.output === 'object' && parsed.output !== null ? parsed.output : parsed;
         
-        try {
-            /* * ==========================================
-             * YOUR EXISTING SHEETS LOGIC GOES HERE
-             * ==========================================
-             * Example:
-             * const auth = new google.auth.GoogleAuth({ ... });
-             * const sheets = google.sheets({ version: 'v4', auth });
-             * const response = await sheets.spreadsheets.values.get({ ... });
-             */
+        let targetAlias = 'unknown';
 
-            console.log(`[Sheets Skill] Processing query: ${query}`);
-
-            // Placeholder response until you paste your original sheets logic in
-            return `📊 <b>Google Sheets Data</b>\n<i>Processed query:</i> ${query}\n\n(Note: Original Google Sheets integration logic running successfully.)`;
-            
-        } catch (error) {
-            return `❌ <b>Sheets Error:</b> Failed to access spreadsheet. ${error.message}`;
+        // 1. Determine the target sheet
+        if (payload.action === 'button_click') {
+            // Data format: sheets|add_grocery|Store|Item|Qty
+            const parts = payload.raw_data.split('|');
+            if (parts[1].includes('grocery')) targetAlias = 'grocery';
+        } else {
+            targetAlias = (payload.target || 'grocery').toLowerCase();
         }
+
+        // 2. Safely route to the sub-module
+        const modulePath = path.join(__dirname, 'modules', `${targetAlias}.js`);
+        
+        if (!fs.existsSync(modulePath)) {
+            logger.warn(`⚠️ User requested unknown sheet: ${targetAlias}`);
+            return await context.bot.sendMessage(context.chatId, `❌ I don't have a configuration module for the '${targetAlias}' sheet yet.`);
+        }
+
+        // 3. Execute the module!
+        const sheetLogic = require(modulePath);
+        await sheetLogic(payload, context);
+        
+        return null; // Return null so bot.js knows we handled the messaging ourselves
     }
 };

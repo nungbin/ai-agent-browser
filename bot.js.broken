@@ -1,0 +1,254 @@
+require('dotenv').config();
+const TelegramBot = require('node-telegram-bot-api');
+const fs = require('fs');
+const path = require('path');
+const logger = require('./helpers/logger');
+// Ensure this path matches exactly what you had before
+const voiceHelper = require('./helpers/voiceHelper');
+
+const token = process.env.TELEGRAM_TOKEN;
+if (!token) {
+    logger.error("❌ TELEGRAM_TOKEN is missing in .env file.");
+    process.exit(1);
+}
+
+const bot = new TelegramBot(token, { polling: true });
+
+// ==========================================
+// 1. STATE MANAGEMENT
+// ==========================================
+const state = {
+    personaEnabled: false,
+    pendingCommands: new Map()
+};
+
+// ==========================================
+// 2. DYNAMIC SKILL LOADER
+// ==========================================
+const activeSkills = {};
+const skillsDir = path.join(__dirname, 'skills');
+
+if (fs.existsSync(skillsDir)) {
+    fs.readdirSync(skillsDir).forEach(folder => {
+        const skillPath = path.join(skillsDir, folder, 'skill.js');
+        if (fs.existsSync(skillPath)) {
+            const skill = require(skillPath);
+            activeSkills[folder] = skill;
+            logger.info(`🔌 Loaded Skill: ${folder}`);
+        }
+    });
+}
+
+async function getDynamicPrompt() {
+    let dynamicSkills = "";
+    for (const folder of fs.readdirSync(skillsDir)) {
+        const mdPath = path.join(skillsDir, folder, 'skill.md');
+        if (fs.existsSync(mdPath)) {
+            dynamicSkills += `\n${fs.readFileSync(mdPath, 'utf8').trim()}\n`;
+        }
+    }
+    const promptTemplate = fs.readFileSync(path.join(__dirname, 'prompts', 'system_prompt.txt'), 'utf8');
+    return promptTemplate.replace(/\{\{DYNAMIC_SKILLS\}\}/g, dynamicSkills);
+}
+
+// ==========================================
+// 3. SLASH COMMANDS
+// ==========================================
+bot.onText(/\/start|\/help/, (msg) => {
+    bot.sendMessage(msg.chat.id, "🤖 Agentic AI is online. Send me a command or voice note.");
+});
+
+bot.onText(/\/persona/, (msg) => {
+    state.personaEnabled = !state.personaEnabled;
+    const reply = state.personaEnabled 
+        ? "👱‍♀️ Persona Mode: ENABLED. I will be conversational." 
+        : "🤖 Persona Mode: DISABLED. I am returning to strictly robotic output.";
+    bot.sendMessage(msg.chat.id, reply);
+    logger.info(reply);
+});
+
+// ==========================================
+// 4. TELEGRAM BUTTON ROUTER
+// ==========================================
+bot.on('callback_query', async (query) => {
+    const chatId = query.message.chat.id;
+    const msgId = query.message.message_id;
+    const data = query.data;
+
+    if (data === 'cancel') {
+        bot.editMessageText("❌ Command cancelled.", { chat_id: chatId, message_id: msgId });
+    } else if (data.startsWith('run_')) {
+        const cid = data.split('_')[1];
+        const cmd = state.pendingCommands.get(cid);
+        if (cmd) {
+            bot.editMessageText(`⚙️ Executing...\n<pre>${cmd.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`, { chat_id: chatId, message_id: msgId, parse_mode: 'HTML' });
+            try {
+                const resultText = await activeSkills['cli'].runCommand(cmd);
+                bot.editMessageText(`💻 <b>Command:</b> <code>${cmd.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>\n✅ <b>Result:</b>\n<pre>${resultText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`, { chat_id: chatId, message_id: msgId, parse_mode: 'HTML' });
+            } catch(e) {
+                bot.editMessageText(`❌ Error: ${e.message}`, { chat_id: chatId, message_id: msgId });
+            }
+            state.pendingCommands.delete(cid);
+        } else {
+            bot.editMessageText("❌ Command expired.", { chat_id: chatId, message_id: msgId });
+        }
+    } else {
+        const parts = data.split('|');
+        const skillName = parts[0];
+        
+        if (activeSkills[skillName]) {
+            try {
+                const parsed = { output: { action: 'button_click', raw_data: data } };
+                const context = { bot, chatId, state, messageId: msgId };
+                
+                if (typeof activeSkills[skillName].execute === 'function') {
+                    await activeSkills[skillName].execute(parsed, context);
+                } else if (typeof activeSkills[skillName] === 'function') {
+                    await activeSkills[skillName](null, parsed, context); 
+                }
+            } catch (e) {
+                logger.error(`Callback Error [${skillName}]`, e.message);
+                bot.sendMessage(chatId, `❌ Button Error: ${e.message}`);
+            }
+        }
+    }
+    bot.answerCallbackQuery(query.id).catch(()=>{});
+});
+
+// ==========================================
+// 5. MAIN TEXT & VOICE ROUTER
+// ==========================================
+bot.on('message', async (msg) => {
+    if (msg.text && msg.text.startsWith('/')) return;
+
+    const chatId = msg.chat.id;
+    let processText = msg.text || msg.caption || '';
+
+    // ==============================================================
+    // 🎙️ VOICE HANDLING ZONE
+    // ==============================================================
+    if (msg.voice) {
+        try {
+            // *** NOTE TO HPA6: If you have a custom voiceHelper.js that handles 
+            // the progress bars, replace this try/catch block with your original code! ***
+            
+            const statusMsg = await bot.sendMessage(chatId, "⏳ Downloading voice note...");
+            const fileLink = await bot.getFileLink(msg.voice.file_id);
+            const audioResponse = await fetch(fileLink);
+            const blob = await audioResponse.blob();
+            
+            await bot.editMessageText("🎙️ Transcribing...", { chat_id: chatId, message_id: statusMsg.message_id });
+            
+            const form = new FormData();
+            form.append('audio', blob, 'voice.ogg');
+            
+            const sttServerUrl = process.env.STT_SERVER_URL || 'http://192.168.1.156:3000/transcribe';
+            const sttResponse = await fetch(sttServerUrl, { method: 'POST', body: form });
+            const sttData = await sttResponse.json();
+            
+            if (sttData.error) throw new Error(sttData.error);
+            processText = sttData.text;
+            
+            await bot.deleteMessage(chatId, statusMsg.message_id);
+            logger.info(`🗣️ Transcribed Voice: "${processText}"`);
+        } catch (e) {
+            logger.error('Voice Transcription Error', e.message);
+            return bot.sendMessage(chatId, `❌ Voice error: ${e.message}`);
+        }
+    }
+    // ==============================================================
+
+    if (!processText) return;
+
+    // --- 🌟 THE WAKE-WORD LOGIC 🌟 ---
+    const lowerText = processText.toLowerCase();
+    const heardName = lowerText.includes('veronica');
+    const usePersonaForThisMessage = state.personaEnabled || heardName;
+
+    if (heardName && !state.personaEnabled) {
+        logger.info(`👱‍♀️ Wake-word 'Veronica' detected! Context flagged for personality.`);
+    }
+
+    const waitMsg = await bot.sendMessage(chatId, "🧠 Routing...");
+
+    try {
+        const basePrompt = await getDynamicPrompt();
+        
+        // REVERTED to the 100% stable instruction. Qwen's ONLY job is to route JSON safely.
+        const personaInstruction = "You are an advanced AI assistant. Output ONLY the requested JSON. Be strict and robotic.";
+
+        const finalPrompt = basePrompt
+            .replace(/\{\{BOT_PERSONA\}\}/g, personaInstruction)
+            .replace(/\{\{BOT_NAME\}\}/g, 'Veronica')
+            .replace(/\{\{CONVERSATION_HISTORY\}\}/g, 'No prior context.')
+            .replace(/\{\{USER_MESSAGE\}\}/g, processText);
+
+        const OLLAMA_URL = `http://${process.env.OLLAMA_IP || '127.0.0.1'}:11434/api/generate`;
+        
+        const res = await fetch(OLLAMA_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: process.env.OLLAMA_MODEL || 'qwen3.5:4b',
+                prompt: finalPrompt,
+                stream: false,
+                // Removed format: 'json' to prevent Ollama from outputting empty strings on hallucination
+                options: { temperature: 0.1 }
+            })
+        });
+
+        const data = await res.json();
+        
+        // Bulletproof parsing
+        let cleanStr = (data.response || "").replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json|```/gi, '').trim();
+        const startIdx = cleanStr.indexOf('{');
+        const endIdx = cleanStr.lastIndexOf('}');
+        
+        if (startIdx === -1 || endIdx === -1) {
+            throw new Error(`AI hallucinated and broke JSON format. Raw output: ${data.response}`);
+        }
+        
+        cleanStr = cleanStr.substring(startIdx, endIdx + 1);
+        const parsed = JSON.parse(cleanStr);
+        const intent = parsed.intent;
+
+        await bot.deleteMessage(chatId, waitMsg.message_id);
+
+        if (activeSkills[intent]) {
+            // Pass the usePersona flag safely to the SKILLS
+            const context = { bot, chatId, state, usePersona: usePersonaForThisMessage, originalText: processText };
+            logger.info(`🔀 Routing to skill: [${intent}]`);
+
+            if (typeof activeSkills[intent].execute === 'function') {
+                await activeSkills[intent].execute(parsed, context);
+            } else if (typeof activeSkills[intent] === 'function') {
+                await activeSkills[intent](null, parsed, context); 
+            }
+        } else {
+            bot.sendMessage(chatId, `⚠️ I understood the intent as '${intent}', but I don't have a configured skill for that yet.`);
+        }
+
+    } catch (e) {
+        logger.error('Router Parse Error', e.message);
+        bot.editMessageText(`❌ Failed to parse AI routing. Error: ${e.message}`, { chat_id: chatId, message_id: waitMsg.message_id });
+    }
+});
+
+// ==========================================
+// 6. STARTUP HEALTH CHECKS
+// ==========================================
+async function checkOllamaHealth() {
+    const OLLAMA_URL = `http://${process.env.OLLAMA_IP || '127.0.0.1'}:11434/api/tags`;
+    try {
+        const res = await fetch(OLLAMA_URL, { timeout: 3000 });
+        if (res.ok) {
+            logger.info(`✅ Ollama AI is ONLINE at ${process.env.OLLAMA_IP || '127.0.0.1'} (Model: ${process.env.OLLAMA_MODEL || 'qwen3.5:4b'})`);
+        }
+    } catch (e) {
+        logger.error(`❌ ERROR: Could not connect to local Ollama AI.`, e.message);
+    }
+}
+
+checkOllamaHealth().then(() => {
+    logger.info("🚀 Agentic Brain Router Started! Waiting for commands...");
+});

@@ -21,6 +21,8 @@ auth-profile/
 _noderfc.log
 dev_rfc.log
 
+google-credentials.json
+
 # OS Files
 .DS_Store
 Thumbs.d
