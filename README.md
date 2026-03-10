@@ -72,7 +72,7 @@ You can send these requests to the bot via **Text Message** or by holding down t
 
 ### 1. SAP C++ SDK Prerequisites (Linux)
 
-To use the SAP RFC module, you must download (Note 2573790) the proprietary SAP NW RFC SDK (7.50+) from the SAP Support Portal and install it on your Linux container:
+To use the SAP RFC module, you must download (please check Note 2573790) the proprietary SAP NW RFC SDK (7.50+) from the SAP Support Portal and install it on your Linux container:
 
 ```bash
 # Extract to /usr/local/sap/nwrfcsdk
