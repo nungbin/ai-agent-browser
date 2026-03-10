@@ -1,10 +1,9 @@
-// File: regression_testing/test_router.js
 require('dotenv').config();
 const fs = require('fs').promises;
 const path = require('path');
 
 console.log("=========================================");
-console.log("🧪 AI ROUTER REGRESSION TESTER v3.0");
+console.log("🧪 AI ROUTER REGRESSION TESTER v4.0");
 console.log("=========================================\n");
 
 const OLLAMA_IP = process.env.OLLAMA_IP || '127.0.0.1';
@@ -18,9 +17,18 @@ const testCases = [
     { prompt: "Check ST22 in SAP", expectedIntent: "sap", expectedAction: "gui" },
     { prompt: "query the latest sales orders in SAP", expectedIntent: "sap", expectedAction: "rfc" },
     { prompt: "can you connect to SAP via RFC and get me the latest shortdumps?", expectedIntent: "sap", expectedAction: "rfc" },
+    { 
+        prompt: "Check the SLG1 logs for object ZAGENT subobject TEST", 
+        expectedIntent: "sap", 
+        expectedAction: "rfc",
+        validateOutput: (parsed) => {
+            const payload = parsed.output || parsed;
+            return payload.task === 'slg1' && payload.object === 'ZAGENT' && payload.subobject === 'TEST';
+        }
+    },
     { prompt: "run pwd", expectedIntent: "cli", expectedOutput: "pwd" },
-    { prompt: "run pld", expectedIntent: "cli", expectedOutput: "pwd" }, // STT Typo Auto-Correction Test
-    { prompt: "P WD", expectedIntent: "cli", expectedOutput: "pwd" },    // STT Typo Auto-Correction Test
+    { prompt: "run pld", expectedIntent: "cli", expectedOutput: "pwd" }, 
+    { prompt: "P WD", expectedIntent: "cli", expectedOutput: "pwd" },    
     { prompt: "write a c program hello.c which prints hello world", expectedIntent: "write_file", expectedFilename: "hello.c" },
     { prompt: "read the latest row from my google sheet", expectedIntent: "sheets" },
     { prompt: "go to google.com and scrape the headlines", expectedIntent: "browser" },
@@ -63,7 +71,6 @@ async function testOllama() {
         const test = testCases[i];
         process.stdout.write(`[Test ${i + 1}/${testCases.length}] Testing: "${test.prompt}"... `);
         
-        // Simulating the Persona injection from bot.js
         const finalPrompt = basePrompt
             .replace(/\{\{BOT_PERSONA\}\}/g, 'You are an advanced AI assistant.')
             .replace(/\{\{BOT_NAME\}\}/g, 'Veronica')
@@ -80,7 +87,7 @@ async function testOllama() {
                     prompt: finalPrompt, 
                     stream: false, 
                     format: 'json',
-                    options: { temperature: 0.1 } // Keep it strictly analytical
+                    options: { temperature: 0.1 } 
                 })
             });
             
@@ -92,7 +99,6 @@ async function testOllama() {
             let isPass = true;
             let errorMsg = "";
 
-            // Nested JSON safety fallback (in case AI nests SAP/File outputs)
             const action = parsed.action || (parsed.output && parsed.output.action);
             const filename = parsed.filename || (parsed.output && parsed.output.filename);
             const outputStr = typeof parsed.output === 'string' ? parsed.output : undefined;
@@ -109,6 +115,9 @@ async function testOllama() {
             } else if (test.expectedOutput && outputStr !== test.expectedOutput) {
                 isPass = false;
                 errorMsg = `Wrong Output/Command (Got: ${outputStr})`;
+            } else if (test.validateOutput && !test.validateOutput(parsed)) {
+                isPass = false;
+                errorMsg = `Output validation failed for nested variables (e.g. SLG1 object/subobject)!`;
             }
             
             if (isPass) {

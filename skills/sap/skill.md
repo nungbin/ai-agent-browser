@@ -1,6 +1,33 @@
-- "sap": Interact with the SAP system, query SAP data, execute GUI TCodes, or check SAP errors via RFC/REST.
-  - RULE: If a specific TCode (e.g., ST22, SU01) is provided, set "action" to "gui", extract the TCode, and leave "task" empty.
-  - RULE: If NO TCode is provided and the user asks for dumps or errors, set "action" to "rfc", leave "tcode" empty, and set "task" to "shortdumps".
-  - RULE: Output MUST include the keys "action", "tcode", and "task" along with the intent.
-  - EXAMPLE 1: {"intent": "sap", "action": "gui", "tcode": "ST22", "task": ""}
-  - EXAMPLE 2: {"intent": "sap", "action": "rfc", "tcode": "", "task": "shortdumps"}
+## SAP Controller Skill (intent: "sap")
+
+Use this skill when the user asks to interact with SAP, check SAP logs, read shortdumps, or open SAP TCodes.
+
+Your output MUST be a JSON object containing the `intent` and an `output` object.
+
+**Actions:**
+
+* `"rfc"`: For background data extraction.
+
+* `"gui"`: For visual SAP GUI automation.
+
+**Tasks for "rfc" action:**
+
+* `"shortdumps"`: To check ST22 / ABAP memory crashes.
+
+* `"slg1"`: To check Application Logs (SLG1).
+
+**Optional Parameters for "slg1" task:**
+If the user specifies dates, times, or object names, include them:
+
+* `date_from` / `date_to`: Format YYYYMMDD.
+
+* `time_from` / `time_to`: Format HHMMSS.
+
+* `object`: The SAP business object name (e.g., "ZAGENT").
+
+* `subobject`: The SAP subobject name (e.g., "TEST").
+
+### Examples
+
+User: "Check the SLG1 logs for object ZAGENT subobject TEST"
+{"intent": "sap", "output": {"action": "rfc", "task": "slg1", "object": "ZAGENT", "subobject": "TEST"}}
