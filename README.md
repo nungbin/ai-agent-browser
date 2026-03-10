@@ -84,7 +84,7 @@ MEMORY\_LIMIT=30
 \# \==========================================  
 \# 2\. LOCAL AI / OLLAMA CONFIG  
 \# \==========================================  
-OLLAMA\_IP=your\_own\_ip\_address
+OLLAMA\_IP=your\_ollama\_ip\_address  
 OLLAMA\_MODEL=qwen3.5:4b
 
 \# \==========================================  
