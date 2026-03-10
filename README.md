@@ -90,13 +90,13 @@ OLLAMA\_MODEL=qwen3.5:4b
 \# \==========================================  
 \# 3\. WINDOWS HOST CONFIG (For SAP GUI Automation)  
 \# \==========================================  
-WINDOWS\_HOST=your\_own\_ip\_address  
+WINDOWS\_HOST=your\_own\_Windows\_ip\_address  
 WINDOWS\_USER=your\_windows\_admin\_user
 
 \# \==========================================  
 \# 4\. SAP CREDENTIALS (RFC & GUI Injection)  
 \# \==========================================  
-SAP\_HOST=your\_own\_ip\_address  
+SAP\_HOST=your\_own\_SAP\_Server\_ip\_address  
 SAP\_SYSTEM=NPL  
 SAP\_CLIENT=001  
 SAP\_USER=your\_actual\_username  
@@ -106,7 +106,7 @@ SAP\_PASSWORD=your\_actual\_password
 \# 5\. LOGGING & MICROSERVICES  
 \# \==========================================  
 LOG\_RETENTION\_DAYS=7  
-STT\_SERVER\_URL=your\_own\_ip\_address
+STT\_SERVER\_URL=your\_own\_STT\_Server\_ip\_address
 
 ### **4\. Start the bot**
 
