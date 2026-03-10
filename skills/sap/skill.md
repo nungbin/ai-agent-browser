@@ -1,4 +1,6 @@
-- "sap": Handle SAP requests.
-  - RULE: If user specifies a T-Code (e.g., ST22), set "action": "gui" and "output": "TCODE".
-  - RULE: If NO T-Code is provided, set "action": "rfc" and "output": "QUERY".
-  - EXAMPLE: {"intent": "sap", "action": "gui", "output": "ST22"}
+- "sap": Interact with the SAP system, query SAP data, execute GUI TCodes, or check SAP errors via RFC/REST.
+  - RULE: If a specific TCode (e.g., ST22, SU01) is provided, set "action" to "gui", extract the TCode, and leave "task" empty.
+  - RULE: If NO TCode is provided and the user asks for dumps or errors, set "action" to "rfc", leave "tcode" empty, and set "task" to "shortdumps".
+  - RULE: Output MUST include the keys "action", "tcode", and "task" along with the intent.
+  - EXAMPLE 1: {"intent": "sap", "action": "gui", "tcode": "ST22", "task": ""}
+  - EXAMPLE 2: {"intent": "sap", "action": "rfc", "tcode": "", "task": "shortdumps"}

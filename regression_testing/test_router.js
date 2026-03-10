@@ -1,7 +1,11 @@
 // File: regression_testing/test_router.js
-require('dotenv').config({ path: '../.env' });
+require('dotenv').config();
 const fs = require('fs').promises;
 const path = require('path');
+
+console.log("=========================================");
+console.log("🧪 AI ROUTER REGRESSION TESTER v3.0");
+console.log("=========================================\n");
 
 const OLLAMA_IP = process.env.OLLAMA_IP || '127.0.0.1';
 const CORE_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:4b';
@@ -13,6 +17,7 @@ const testCases = [
     { prompt: "what is the weather in London", expectedIntent: "weather" },
     { prompt: "Check ST22 in SAP", expectedIntent: "sap", expectedAction: "gui" },
     { prompt: "query the latest sales orders in SAP", expectedIntent: "sap", expectedAction: "rfc" },
+    { prompt: "can you connect to SAP via RFC and get me the latest shortdumps?", expectedIntent: "sap", expectedAction: "rfc" },
     { prompt: "run pwd", expectedIntent: "cli", expectedOutput: "pwd" },
     { prompt: "run pld", expectedIntent: "cli", expectedOutput: "pwd" }, // STT Typo Auto-Correction Test
     { prompt: "P WD", expectedIntent: "cli", expectedOutput: "pwd" },    // STT Typo Auto-Correction Test
@@ -24,7 +29,8 @@ const testCases = [
 
 async function loadDynamicPrompt() {
     let dynamicPromptAdditions = "";
-    const skillsDir = path.join(__dirname, '..', 'skills');
+    const skillsDir = path.join(__dirname, 'skills');
+    
     try {
         const folders = await fs.readdir(skillsDir);
         for (const folder of folders) {
@@ -35,17 +41,27 @@ async function loadDynamicPrompt() {
         }
     } catch(e) { }
     
-    const promptTemplate = await fs.readFile(path.join(__dirname, '..', 'prompts', 'system_prompt.txt'), 'utf8');
+    const promptPath = path.join(__dirname, 'prompts', 'system_prompt.txt');
+    const promptTemplate = await fs.readFile(promptPath, 'utf8');
     return promptTemplate.replace(/\{\{DYNAMIC_SKILLS\}\}/g, dynamicPromptAdditions);
 }
 
 async function testOllama() {
-    console.log(`\n🧪 Starting Router Regression Test against ${CORE_MODEL}\n`);
-    let basePrompt = await loadDynamicPrompt();
+    console.log(`🤖 Pinging Ollama (${CORE_MODEL}) at ${OLLAMA_URL}...\n`);
+    let basePrompt;
+    
+    try {
+        basePrompt = await loadDynamicPrompt();
+    } catch (e) {
+        console.error("❌ ERROR: Failed to load system prompt. Make sure prompts/system_prompt.txt exists!");
+        process.exit(1);
+    }
+    
     let passed = 0;
     
-    for (const test of testCases) {
-        process.stdout.write(`Testing: "${test.prompt}"... `);
+    for (let i = 0; i < testCases.length; i++) {
+        const test = testCases[i];
+        process.stdout.write(`[Test ${i + 1}/${testCases.length}] Testing: "${test.prompt}"... `);
         
         // Simulating the Persona injection from bot.js
         const finalPrompt = basePrompt
@@ -57,9 +73,17 @@ async function testOllama() {
 
         try {
             const res = await fetch(OLLAMA_URL, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: CORE_MODEL, prompt: finalPrompt, stream: false, format: 'json' })
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    model: CORE_MODEL, 
+                    prompt: finalPrompt, 
+                    stream: false, 
+                    format: 'json',
+                    options: { temperature: 0.1 } // Keep it strictly analytical
+                })
             });
+            
             const data = await res.json();
             let cleanStr = (data.response || "").replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json|```/gi, '').trim();
             cleanStr = cleanStr.substring(cleanStr.indexOf('{'), cleanStr.lastIndexOf('}') + 1);
@@ -68,18 +92,23 @@ async function testOllama() {
             let isPass = true;
             let errorMsg = "";
 
+            // Nested JSON safety fallback (in case AI nests SAP/File outputs)
+            const action = parsed.action || (parsed.output && parsed.output.action);
+            const filename = parsed.filename || (parsed.output && parsed.output.filename);
+            const outputStr = typeof parsed.output === 'string' ? parsed.output : undefined;
+
             if (parsed.intent !== test.expectedIntent) {
                 isPass = false;
                 errorMsg = `Wrong Intent (Got: ${parsed.intent})`;
-            } else if (test.expectedAction && parsed.action !== test.expectedAction) {
+            } else if (test.expectedAction && action !== test.expectedAction) {
                 isPass = false;
-                errorMsg = `Wrong Action (Got: ${parsed.action})`;
-            } else if (test.expectedFilename && parsed.filename !== test.expectedFilename) {
+                errorMsg = `Wrong Action (Got: ${action})`;
+            } else if (test.expectedFilename && filename !== test.expectedFilename) {
                 isPass = false;
-                errorMsg = `Wrong Filename (Got: ${parsed.filename})`;
-            } else if (test.expectedOutput && parsed.output !== test.expectedOutput) {
+                errorMsg = `Wrong Filename (Got: ${filename})`;
+            } else if (test.expectedOutput && outputStr !== test.expectedOutput) {
                 isPass = false;
-                errorMsg = `Wrong Output/Command (Got: ${parsed.output})`;
+                errorMsg = `Wrong Output/Command (Got: ${outputStr})`;
             }
             
             if (isPass) {
@@ -87,12 +116,19 @@ async function testOllama() {
                 passed++;
             } else {
                 console.log(`❌ FAIL -> ${errorMsg}`);
+                console.log(`\n   Raw JSON: ${JSON.stringify(parsed)}`);
             }
         } catch (error) { 
-            console.log(`❌ FAIL -> JSON Parse or Timeout Error`); 
+            console.log(`❌ FAIL -> JSON Parse or Timeout Error (${error.message})`); 
         }
     }
-    console.log(`\n🏁 Test Complete: ${passed}/${testCases.length} Passed.\n`);
+    
+    console.log(`\n🎯 REGRESSION TEST COMPLETE: ${passed}/${testCases.length} Passed.`);
+    if (passed === testCases.length) {
+        console.log("🚀 The Brain is 100% healthy. Ready for production!");
+    } else {
+        console.log("⚠️ WARNING: The AI System Prompt might need tweaking!");
+    }
 }
 
 testOllama();

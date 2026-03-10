@@ -18,6 +18,7 @@
     "googleapis": "^171.4.0",
     "gtts": "^0.2.1",
     "node-cron": "^4.2.1",
+    "node-rfc": "^3.3.1",
     "node-telegram-bot-api": "^0.67.0",
     "puppeteer": "^24.37.5",
     "puppeteer-extra": "^3.3.6",
