@@ -6,7 +6,6 @@ const linuxBrainIP = 'http://192.168.1.243:3000';
 
 console.log(`📡 Connecting to Linux Brain at ${linuxBrainIP}...`);
 
-// Keep our aggressive auto-reconnect logic
 const socket = io(linuxBrainIP, {
     reconnection: true,             
     reconnectionDelay: 2000,        
@@ -20,24 +19,29 @@ socket.on('connect', () => {
 socket.on('execute_sap', (payload) => {
     console.log(`\n📥 Payload Received! Target T-Code: ${payload.tcode}`);
     
-    // Tell Linux we are starting
-    socket.emit('status_update', `Starting task for user: ${payload.target_user}...`);
-    
-    // SPAWN the VBScript with 5 dynamic arguments!
-    const surgeon = spawn('cscript', [
-        '//nologo', 'surgeon.vbs', 
-        payload.username, 
-        payload.password, 
-        payload.tcode,
-        payload.target_user,  // DYNAMIC USER
-        payload.target_pass   // DYNAMIC PASSWORD
-    ]);
+    let scriptName = '';
+    let args = [];
 
-    // Intercept standard output and stream it to Linux
+    // 🌟 THE SCRIPT ROUTER 🌟
+    if (payload.tcode === 'SU01') {
+        scriptName = 'surgeon.vbs';
+        args = ['//nologo', scriptName, payload.username, payload.password, payload.tcode, payload.target_user, payload.target_pass];
+        socket.emit('status_update', `Starting SU01 task for user: ${payload.target_user}...`);
+    } else if (payload.tcode === 'SE38') {
+        scriptName = 'se38_creator.vbs';
+        args = ['//nologo', scriptName, payload.username, payload.password, payload.tcode, payload.program_name];
+        socket.emit('status_update', `Starting SE38 task for program: ${payload.program_name}...`);
+    } else {
+        socket.emit('status_update', `❌ ERROR: Unsupported T-Code requested (${payload.tcode}).`);
+        socket.emit('task_complete', { status: "Failed" });
+        return;
+    }
+
+    const surgeon = spawn('cscript', args);
+
     surgeon.stdout.on('data', (data) => {
         const output = data.toString().trim();
         if (output) {
-            // Split by newlines in case VBScript spits out a block of text
             const lines = output.split('\n');
             lines.forEach(line => {
                 const cleanLine = line.trim();
@@ -54,14 +58,12 @@ socket.on('execute_sap', (payload) => {
         socket.emit('status_update', `ERROR: ${data}`);
     });
 
-    // When the VBScript finishes completely
     surgeon.on('close', (code) => {
-        console.log(`✅ Surgeon exited. Task Complete!`);
-        
-        // SEND THE FINAL PAYLOAD BACK TO LINUX
+        console.log(`✅ Script ${scriptName} exited. Task Complete!`);
         socket.emit('task_complete', { 
-            user: payload.target_user,      // DYNAMIC RETURN
-            password: payload.target_pass,  // DYNAMIC RETURN
+            user: payload.target_user,
+            password: payload.target_pass,
+            program: payload.program_name,
             status: code === 0 ? "Success" : "Failed"
         });
     });
