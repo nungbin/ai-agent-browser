@@ -1,24 +1,46 @@
 const socketManager = require('../../../helpers/socketManager');
 const logger = require('../../../helpers/logger');
 
-// Ensure server is running (safe to call multiple times)
 socketManager.initSocketServer();
 
 module.exports = async (parsed, context) => {
     const chatId = context.chatId;
     const bot = context.bot;
 
-    const tcode = (parsed.tcode || 'SU01').toUpperCase();
-    const targetUser = (parsed.target_user || parsed.username || 'TEST1').toUpperCase();
-    const programName = (parsed.program_name || 'ZHELLO_WORLD').toUpperCase();
+    const tcode = String(parsed.tcode || parsed.TCode || 'SU01').toUpperCase().trim();
+    const targetUser = String(parsed.target_user || parsed.username || 'TEST1').toUpperCase().trim();
     
+    // ======================================================================
+    // 🌟 THE CATCH-ALL NAME NET 🌟
+    // Small AIs frequently mix up "program_name" and "structure_name".
+    // This looks at EVERY possible key to find the name we want!
+    // ======================================================================
+    let aiNameFallback = parsed.structure_name || parsed.structureName || parsed.program_name || parsed.programName || parsed.name || '';
+    
+    let programName = String(parsed.program_name || aiNameFallback).toUpperCase().trim();
+    let structureName = String(parsed.structure_name || aiNameFallback).toUpperCase().trim();
+
+    const enforceSAPNamespace = (name, defaultName) => {
+        if (!name || name === 'UNDEFINED' || name === 'NULL' || name === 'UNKNOWN') return defaultName;
+        name = name.replace(/[^A-Z0-9_]/g, ''); 
+        if (!name.startsWith('Z') && !name.startsWith('Y')) name = 'Z' + name;
+        return name.substring(0, 16); 
+    };
+
+    programName = enforceSAPNamespace(programName, 'ZHELLO_WORLD');
+    structureName = enforceSAPNamespace(structureName, 'ZSTR_TEST1');
+    // ======================================================================
+
     const initialPassword = `Init${Math.floor(Math.random() * 9000) + 1000}!`;
 
     if (!socketManager.isWindowsConnected()) {
-        return await bot.sendMessage(chatId, "⚠️ **Offline:** The Surface Pro robot is not currently connected to the Linux Brain.", { parse_mode: 'Markdown' });
+        return await bot.sendMessage(chatId, "⚠️ **Offline:** The Surface Pro robot is not currently connected.", { parse_mode: 'Markdown' });
     }
 
-    const targetDisplay = tcode === 'SE38' ? programName : targetUser;
+    let targetDisplay = targetUser;
+    if (tcode === 'SE38') targetDisplay = programName;
+    if (tcode === 'SE11') targetDisplay = structureName;
+
     let logText = `🤖 **SAP GUI Robot Initiated**\nTarget: \`${targetDisplay}\` via \`${tcode}\`\n\n\`\`\`text\n> Waking up Windows...`;
     
     const statusMessage = await bot.sendMessage(chatId, logText + "\n\`\`\`", { parse_mode: 'Markdown' });
@@ -37,7 +59,8 @@ module.exports = async (parsed, context) => {
         tcode: tcode,
         target_user: targetUser,
         target_pass: initialPassword,
-        program_name: programName // 🌟 NEW: Send the program name!
+        program_name: programName,
+        structure_name: structureName
     };
 
     try {
@@ -51,11 +74,13 @@ module.exports = async (parsed, context) => {
         if (result.status === "Success") {
             if (tcode === 'SE38') {
                 await bot.sendMessage(chatId, `🎉 **Task Completed!**\n\n📜 **Program:** \`${result.program}\` was successfully created and activated!`, { parse_mode: 'Markdown' });
+            } else if (tcode === 'SE11') {
+                await bot.sendMessage(chatId, `🎉 **Task Completed!**\n\n🗄️ **Structure:** \`${result.structure}\` was successfully created and activated!`, { parse_mode: 'Markdown' });
             } else {
                 await bot.sendMessage(chatId, `🎉 **Task Completed!**\n\n👤 **User:** \`${result.user}\`\n🔑 **Password:** \`${result.password}\``, { parse_mode: 'Markdown' });
             }
         } else {
-            await bot.sendMessage(chatId, `❌ **Task Failed:** The VBScript encountered an error. Check the terminal logs above.`, { parse_mode: 'Markdown' });
+            await bot.sendMessage(chatId, `❌ **Task Failed:** The VBScript encountered an error.`, { parse_mode: 'Markdown' });
         }
 
     } catch (error) {

@@ -31,6 +31,10 @@ socket.on('execute_sap', (payload) => {
         scriptName = 'se38_creator.vbs';
         args = ['//nologo', scriptName, payload.username, payload.password, payload.tcode, payload.program_name];
         socket.emit('status_update', `Starting SE38 task for program: ${payload.program_name}...`);
+    } else if (payload.tcode === 'SE11') {
+        scriptName = 'se11_creator.vbs';
+        args = ['//nologo', scriptName, payload.username, payload.password, payload.tcode, payload.structure_name];
+        socket.emit('status_update', `Starting SE11 task for structure: ${payload.structure_name}...`);
     } else {
         socket.emit('status_update', `❌ ERROR: Unsupported T-Code requested (${payload.tcode}).`);
         socket.emit('task_complete', { status: "Failed" });
@@ -64,6 +68,7 @@ socket.on('execute_sap', (payload) => {
             user: payload.target_user,
             password: payload.target_pass,
             program: payload.program_name,
+            structure: payload.structure_name,
             status: code === 0 ? "Success" : "Failed"
         });
     });

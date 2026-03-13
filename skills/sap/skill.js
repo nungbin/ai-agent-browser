@@ -1,4 +1,3 @@
-// File: skills/sap/skill.js
 const fs = require('fs');
 const path = require('path');
 
@@ -9,18 +8,52 @@ module.exports = {
 
         console.log("=== 🔍 RAW SAP JSON FROM AI ===", JSON.stringify(parsed, null, 2));
 
-        // 🛡️ BULLET-PROOF PARSING (Checks both the root level AND inside the 'output' object)
+        // 🛡️ BULLET-PROOF PARSING
         const payload = typeof parsed.output === 'object' && parsed.output !== null ? parsed.output : parsed;
         
-        const action = String(payload.action || payload.Action || "").toLowerCase().trim();
-        const tcode = String(payload.tcode || payload.TCode || "").toUpperCase().trim();
-        const task = String(payload.task || payload.Task || "unknown").toLowerCase().trim();
+        // ==========================================
+        // 🛡️ KEY NORMALIZATION GUARDRAIL 
+        // Small models often hallucinate JSON keys. We aggressively check 
+        // for variations to ensure the downstream modules get what they expect.
+        // ==========================================
+        payload.structure_name = payload.structure_name || payload.structureName || payload.structure || payload.name || "";
+        payload.program_name = payload.program_name || payload.programName || payload.program || payload.name || "";
+        payload.target_user = payload.target_user || payload.targetUser || payload.user || payload.username || "";
+        // ==========================================
+
+        let action = String(payload.action || payload.Action || "").toLowerCase().trim();
+        let tcode = String(payload.tcode || payload.TCode || "").toUpperCase().trim();
+        let task = String(payload.task || payload.Task || "").toLowerCase().trim();
+
+        // ==========================================
+        // 🌟 DYNAMIC AUTO-DISCOVERY ROUTING
+        // ==========================================
+        const targetCommand = (task || tcode).toLowerCase();
+        const rfcPath = path.join(__dirname, 'rfc_modules', `${targetCommand}.js`);
+        
+        if (action === 'gui' && targetCommand && fs.existsSync(rfcPath)) {
+            console.log(`[Auto-Discovery] Headless RFC module found for '${targetCommand}'. Overriding GUI...`);
+            action = 'rfc';
+            task = targetCommand;
+        }
+
+        // ==========================================
+        // 🛡️ THE MISSING GUARDRAIL FIX 🛡️
+        // If the AI forgets to say "action": "gui", we catch ALL T-Codes here!
+        // ==========================================
+        if (!action || action === 'unknown') {
+            if (tcode === 'SU01' || tcode === 'SE38' || tcode === 'SE11') {
+                action = 'gui';
+            } else if (task === 'slg1' || task === 'st22' || task === 'shortdumps') {
+                action = 'rfc';
+            } else {
+                action = fs.existsSync(rfcPath) ? 'rfc' : 'gui'; // Ultimate fallback
+            }
+        }
+        // ==========================================
 
         try {
             if (action === 'gui') {
-                // ==========================================
-                // 🖥️ GUI MODE (WebSocket RPA)
-                // ==========================================
                 const modulePath = path.join(__dirname, 'gui_modules', 'sapgui.js');
                 
                 if (!fs.existsSync(modulePath)) {
@@ -28,21 +61,16 @@ module.exports = {
                     return null;
                 }
 
-                // Route the payload to our new WebSocket execution module!
                 const sapguiLogic = require(modulePath);
                 await sapguiLogic(payload, context);
                 
             } else if (action === 'rfc') {
-                // ==========================================
-                // 🔌 RFC MODE (TCP PROTOCOL)
-                // ==========================================
-                if (task === 'unknown' || !task) {
+                if (!task || task === 'unknown') {
                     await context.bot.sendMessage(chatId, `⚠️ Unrecognized RFC task.`);
                     return null;
                 }
                 
-                const modulePath = path.join(__dirname, 'rfc_modules', `${task}.js`);
-                if (!fs.existsSync(modulePath)) {
+                if (!fs.existsSync(rfcPath)) {
                     await context.bot.sendMessage(chatId, `🛠️ The RFC module for *${task}* is not built yet!`, { parse_mode: "Markdown" });
                     return null;
                 }
@@ -59,15 +87,12 @@ module.exports = {
                 });
 
                 await client.open();
-                const rfcLogic = require(modulePath);
+                const rfcLogic = require(rfcPath);
                 await rfcLogic(client, parsed, context);
                 await client.close();
 
             } else if (action === 'rest') {
-                // ==========================================
-                // 🌐 REST / ODATA MODE (HTTP PROTOCOL)
-                // ==========================================
-                if (task === 'unknown' || !task) return null;
+                if (!task || task === 'unknown') return null;
                 
                 const modulePath = path.join(__dirname, 'rest_modules', `${task}.js`);
                 if (!fs.existsSync(modulePath)) return null;
