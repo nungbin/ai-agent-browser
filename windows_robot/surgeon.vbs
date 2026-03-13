@@ -110,7 +110,7 @@ Sub SmartSwatter()
         
         WScript.Sleep 1000 
     Next
-    WScript.Echo "❌ FATAL ERROR: Popup refused to die!"
+    WScript.Echo "FATAL ERROR: Popup refused to die!"
     WScript.Quit(1)
 End Sub
 
@@ -120,7 +120,7 @@ Dim fieldId
 
 WScript.Echo "SCOUT: Finding 'User' field..."
 fieldId = FindFieldByIdFragment(session.findById("wnd[0]"), "SUID_ST_BNAME-BNAME")
-If fieldId <> "" Then session.findById(fieldId).text = argTargetUser ' <--- DYNAMIC INJECTION
+If fieldId <> "" Then session.findById(fieldId).text = argTargetUser
 session.findById("wnd[0]").sendVKey 8 ' F8 (Create)
 WScript.Sleep 1500 
 
@@ -147,7 +147,7 @@ WScript.Sleep 1500 ' Wait for the DOM to completely redraw
 WScript.Echo "SCOUT: Hunting Passwords by ID Fragment..."
 fieldId = FindFieldByIdFragment(session.findById("wnd[0]"), "PASSWORD_EXT-PASSWORD")
 If fieldId <> "" Then 
-    session.findById(fieldId).text = argTargetPass ' <--- DYNAMIC INJECTION
+    session.findById(fieldId).text = argTargetPass
     WScript.Echo "  -> Injected Password 1!"
 Else
     WScript.Echo "  -> ERROR: Could not find Password 1 box."
@@ -155,7 +155,7 @@ End If
 
 fieldId = FindFieldByIdFragment(session.findById("wnd[0]"), "PASSWORD_EXT-PASSWORD2")
 If fieldId <> "" Then 
-    session.findById(fieldId).text = argTargetPass ' <--- DYNAMIC INJECTION
+    session.findById(fieldId).text = argTargetPass
     WScript.Echo "  -> Injected Password 2!"
 End If
 
@@ -186,4 +186,12 @@ WScript.Sleep 1500
 WScript.Echo "SCOUT: Checking for Save Warnings..."
 SmartSwatter()
 
-WScript.Echo "✅ SUCCESS! User " & argTargetUser & " processing complete!" ' <--- DYNAMIC MESSAGE
+' --- 4. THE CLEANUP (FORCE LOGOUT) ---
+WScript.Echo "Logging out of SAP..."
+On Error Resume Next
+session.findById("wnd[0]/tbar[0]/okcd").text = "/nex"
+session.findById("wnd[0]").sendVKey 0
+On Error GoTo 0
+WScript.Sleep 1000
+
+WScript.Echo "[SUCCESS] User " & argTargetUser & " processing complete!"
