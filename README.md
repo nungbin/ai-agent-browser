@@ -52,7 +52,9 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
   │    └── write\_file/   
   ├── windows\_robot/          \# 🪟 Windows RPA Client (Copy this folder to Surface Pro)  
   │    ├── client.js          \# Listens for Linux payloads via Socket.io  
-  │    └── surgeon.vbs        \# VBScript that physically drives SAP GUI  
+  │    ├── surgeon.vbs        \# VBScript that physically drives SAP GUI  
+  │    ├── package.json       \# Node dependencies for the client  
+  │    └── package-lock.json    
   ├── sap\_abap\_sources/       \# Documentation & ABAP Code for the SAP Backend      
   ├── stt-microservice/       \# Source code backup for the Whisper STT LXC      
   ├── logs/                   \# Auto-generated daily logs (Ignored in Git)      
@@ -136,7 +138,7 @@ STT\_SERVER\_URL=your\_own\_STT\_Server\_ip\_address
 \# 6\. AI PERSONA & IDENTITY  
 \# \==========================================  
 BOT\_NAME=Veronica  
-USER\_NAME=Bin  
+USER\_NAME=Tony  
 BOT\_PERSONA=You are an incredibly intelligent, highly efficient AI assistant named Veronica. You manage server systems and provide answers for Tony. You speak respectfully, but you always include a touch of dry, sarcastic humor.
 
 SHEET\_ID\_GROCERY="your\_44\_character\_sheet\_id\_here"
@@ -149,14 +151,22 @@ node bot.js \--debug
 
 To allow the Node.js Linux Agent to control the SAP GUI visually without Windows Session 0 Isolation issues, this project utilizes a **WebSocket Architecture**.
 
+### **Prerequisites: Enable SAP GUI Scripting**
+
+Before the VBScript can interact with SAP, you must enable scripting on both the server and the client:
+
+1. **Server-side:** Log into your SAP system, run transaction code **RZ11**, search for the profile parameter sapgui/user\_scripting, and change its value to TRUE.  
+2. **Client-side:** Open SAP Logon on the Windows host, go to Options \-\> Accessibility & Scripting \-\> Scripting, and check "Enable scripting". Uncheck the notification options below it to prevent popup interruptions.
+
+### **Client Setup**
+
 1. Copy the windows\_robot/ folder from this repository to your Windows machine (e.g., your Surface Pro).  
 2. Install **Node.js** on the Windows machine.  
 3. Open a Command Prompt inside the windows\_robot folder and install the dependencies:  
-   npm install socket.io-client
+   npm install
 
-4. Open client.js in a text editor and ensure the linuxBrainIP variable points to your Linux LXC's IP address (e.g., http://192.168.1.243:3000).  
-5. Ensure your SAP GUI client has **Scripting Enabled** (in the Options menu) and that popup notifications are turned off.  
-6. Run the client\!  
+4. Open client.js in a text editor and ensure the linuxBrainIP variable points to your Linux LXC's IP address (e.g., http://\<your\_linux\_ip\>:3000).  
+5. Run the client\!  
    node client.js
 
 The Windows Robot will now securely connect to the Linux Brain and idle silently in the background until Telegram beams a JSON payload to it\!
