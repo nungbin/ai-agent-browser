@@ -23,6 +23,7 @@
     "puppeteer": "^24.37.5",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "rss-parser": "^3.13.0"
+    "rss-parser": "^3.13.0",
+    "socket.io": "^4.8.3"
   }
 }

@@ -14,44 +14,49 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
   * **Stateful Flow without DBs:** Passes complex state directly through Telegram's hidden callback\_data payloads, avoiding the need for external session databases.  
 * **Stateful CLI:** Tracks its Current Working Directory (CWD). If you cd sandbox, it stays there for subsequent commands. Includes a safe-list for auto-execution and a Telegram confirmation button for unknown commands.  
 * **Secure Sandbox Generation:** AI-generated scripts are securely sanitized and written exclusively to the sandbox/ directory, preventing directory traversal attacks. Markdown formatting is automatically stripped so code is instantly executable.  
-* **🔌 Enterprise SAP Integration (Hybrid Architecture):** \* **RFC Mode:** Securely connects to SAP backends via TCP/RFC (node-rfc \+ SAP C++ SDK) to pull headless data straight from the database. Supported modules include:  
-  * **ST22 Shortdumps:** Analyzes ABAP memory crashes.  
-  * **SLG1 Application Logs:** Extracts and translates complex SAP business process failures.  
-  * **GUI Mode:** Triggers a visible SAP window on a remote Windows host via SSH and Scheduled Tasks to execute legacy GUI automation using VBScript.  
+* **🔌 Enterprise SAP Integration (Hybrid Architecture):** \* **RFC Mode:** Securely connects to SAP backends via TCP/RFC (node-rfc \+ SAP C++ SDK) to pull headless data straight from the database. (e.g., ST22 Shortdumps, SLG1 Application Logs).  
+  * **REST Mode:** Connects to SAP via OData/HTTP APIs.  
+  * **GUI Mode (RPA via WebSockets):** Connects to a remote Windows host (e.g., Surface Pro) via a persistent socket.io connection. The Linux Brain beams JSON payloads to the Windows Client, which spawns VBScript "Surgeons" to physically drive the SAP GUI and streams the console output back to Telegram in real-time.  
 * **Hardware-Optimized AI & ChatML Injection:** The SAP AI analyzer features strict prompt locking, token truncation (num\_predict), and **ChatML context injection** specifically engineered to prevent 4B parameter models (like Qwen) from getting stuck in infinite \<think\> loops when summarizing C++ kernel traces or SLG1 network errors.  
 * **Auto-Cleaning Logger:** Custom logging engine that prepends timestamps, creates daily log files in logs/. Retention period is configurable via .env.  
 * **Voice / TTS / STT:** Generates Text-to-Speech audio replies dynamically, and uses a dedicated CPU microservice to transcribe incoming voice notes via Whisper (small.en model). Includes rich Telegram UI progress bars.
 
 ## **📂 Project Structure**
 
-/agent-browser    
-  ├── bot.js                  \# The Core Brain / Router / Wake-Word Detector   
-  ├── google-credentials.json \# Service Account keys for Google APIs (Ignored in Git)  
-  ├── prompts/    
-  │    └── system\_prompt.txt  \# The base instructions for the LLM    
-  ├── helpers/    
-  │    ├── commandHandler.js  \# Telegram slash commands (/safe, /clear)    
-  │    ├── cronHelper.js      \# Scheduling logic    
-  │    ├── logger.js          \# Custom environment-aware logging    
-  │    └── voiceHelper.js     \# TTS Engine and STT API integrations    
-  ├── skills/                 \# DYNAMIC PLUG-N-PLAY CAPABILITIES    
-  │    ├── cli/               \# e.g., skill.js and skill.md    
-  │    ├── news/    
-  │    ├── sap/    
-  │    │    ├── skill.js      \# Main SAP routing switchboard  
-  │    │    └── modules/      \# Hybrid execution modules  
-  │    │         ├── rfc.js   \# node-rfc logic for ST22/SLG1 headless extraction  
-  │    │         └── gui.js   \# SSH \+ VBScript trigger for GUI automation  
-  │    ├── sheets/    
-  │    │    ├── skill.js      \# Switchboard for sheet aliasing  
-  │    │    └── modules/  
-  │    │         └── grocery.js \# Handles AppSheet logic & Telegram UI buttons  
-  │    ├── weather/    
-  │    └── write\_file/    
-  ├── sap\_abap\_sources/       \# Documentation & ABAP Code for the SAP Backend    
-  ├── stt-microservice/       \# Source code backup for the Whisper STT LXC    
-  ├── logs/                   \# Auto-generated daily logs (Ignored in Git)    
-  ├── data/                   \# Persistent memory and settings (Ignored in Git)    
+/agent-browser      
+  ├── bot.js                  \# The Core Brain / Router / Wake-Word Detector     
+  ├── google-credentials.json \# Service Account keys for Google APIs (Ignored in Git)    
+  ├── prompts/      
+  │    └── system\_prompt.txt  \# The base instructions for the LLM      
+  ├── helpers/      
+  │    ├── commandHandler.js  \# Telegram slash commands (/safe, /clear)      
+  │    ├── cronHelper.js      \# Scheduling logic      
+  │    ├── logger.js          \# Custom environment-aware logging      
+  │    ├── voiceHelper.js     \# TTS Engine and STT API integrations   
+  │    └── socketManager.js   \# WebSocket server for Windows RPA (Surface Pro)     
+  ├── skills/                 \# DYNAMIC PLUG-N-PLAY CAPABILITIES      
+  │    ├── cli/               \# e.g., skill.js and skill.md      
+  │    ├── news/      
+  │    ├── sap/      
+  │    │    ├── skill.js      \# Main SAP routing switchboard    
+  │    │    ├── skill.md      \# Instructions for the AI regarding SAP JSON schemas  
+  │    │    ├── gui\_modules/  \# Windows RPA WebSocket modules  
+  │    │    │    └── sapgui.js    
+  │    │    ├── rfc\_modules/  \# node-rfc headless extraction modules  
+  │    │    └── rest\_modules/ \# HTTP/OData extraction modules  
+  │    ├── sheets/      
+  │    │    ├── skill.js      \# Switchboard for sheet aliasing    
+  │    │    └── modules/    
+  │    │         └── grocery.js \# Handles AppSheet logic & Telegram UI buttons    
+  │    ├── weather/      
+  │    └── write\_file/   
+  ├── windows\_robot/          \# 🪟 Windows RPA Client (Copy this folder to Surface Pro)  
+  │    ├── client.js          \# Listens for Linux payloads via Socket.io  
+  │    └── surgeon.vbs        \# VBScript that physically drives SAP GUI  
+  ├── sap\_abap\_sources/       \# Documentation & ABAP Code for the SAP Backend      
+  ├── stt-microservice/       \# Source code backup for the Whisper STT LXC      
+  ├── logs/                   \# Auto-generated daily logs (Ignored in Git)      
+  ├── data/                   \# Persistent memory and settings (Ignored in Git)      
   └── sandbox/                \# Workspace for AI-generated code (Ignored in Git)
 
 ## **🗣️ Usage Examples (Text & Voice)**
@@ -66,7 +71,7 @@ You can send these requests to the bot via **Text Message** or by holding down t
 * **Wake-Word Persona:** Veronica, add apples to the grocery list (Will reply conversationally)  
 * **SAP Skill (RFC):** get me the latest SAP shortdumps  
 * **SAP Skill (RFC):** Check the SLG1 logs for object ZAGENT subobject TEST  
-* **SAP Skill (GUI):** check ST22 in SAP  
+* **SAP Skill (GUI):** Run tcode su01 to create user TEST1 (Triggers Windows Robot over WebSockets)  
 * **TTS Generation:** say "Initialization complete" in a voice note
 
 ## **🛠️ Installation & Setup (Main Node.js LXC)**
@@ -75,8 +80,8 @@ You can send these requests to the bot via **Text Message** or by holding down t
 
 To use the SAP RFC module, you must download (please check SAP Note 2573790\) the proprietary SAP NW RFC SDK (7.50+) from the SAP Support Portal and install it on your Linux container:
 
-\# Extract to /usr/local/sap/nwrfcsdk    
-sudo nano /etc/ld.so.conf.d/nwrfcsdk.conf \# Add path to lib directory    
+\# Extract to /usr/local/sap/nwrfcsdk      
+sudo nano /etc/ld.so.conf.d/nwrfcsdk.conf \# Add path to lib directory      
 sudo ldconfig
 
 ### **2\. Google Sheets API Prerequisites**
@@ -85,99 +90,96 @@ Go to the Google Cloud Console, enable the **Google Sheets API**, and create a S
 
 ### **3\. Clone & Install**
 
-git clone \<repository\_url\>    
-cd agent-browser    
-npm install
+git clone \<repository\_url\>      
+cd agent-browser      
+npm install  
+npm install socket.io \# Required for the Windows Robot connection
 
 ### **4\. Configure Environment variables**
 
 Rename .env.example to .env (or create a new .env file) and populate it:
 
-\# \==========================================    
-\# 1\. CORE TELEGRAM & MEMORY CONFIG    
-\# \==========================================    
-TELEGRAM\_TOKEN=your\_telegram\_bot\_token    
+\# \==========================================      
+\# 1\. CORE TELEGRAM & MEMORY CONFIG      
+\# \==========================================      
+TELEGRAM\_TOKEN=your\_telegram\_bot\_token      
 MEMORY\_LIMIT=30
 
-\# \==========================================    
-\# 2\. LOCAL AI / OLLAMA CONFIG    
-\# \==========================================    
-OLLAMA\_IP=your\_ollama\_ip\_address    
+\# \==========================================      
+\# 2\. LOCAL AI / OLLAMA CONFIG      
+\# \==========================================      
+OLLAMA\_IP=your\_ollama\_ip\_address      
 OLLAMA\_MODEL=qwen3.5:4b
 
-\# \==========================================    
-\# 3\. GOOGLE SHEETS ALIASES  
-\# \==========================================  
-\# Grab this ID from your Google Sheet URL (between /d/ and /edit)  
-SHEET\_ID\_GROCERY="your\_44\_character\_sheet\_id\_here"
-
-\# \==========================================    
-\# 4\. WINDOWS HOST CONFIG (For SAP GUI Automation)    
-\# \==========================================    
-WINDOWS\_HOST=your\_own\_Windows\_ip\_address    
+\# \==========================================      
+\# 3\. WINDOWS HOST CONFIG (For SAP GUI Automation)      
+\# \==========================================      
+WINDOWS\_HOST=your\_own\_Windows\_ip\_address      
 WINDOWS\_USER=your\_windows\_admin\_user
 
-\# \==========================================    
-\# 5\. SAP CREDENTIALS (RFC & GUI Injection)    
-\# \==========================================    
-SAP\_HOST=your\_own\_SAP\_Server\_ip\_address    
-SAP\_SYSTEM=NPL    
-SAP\_CLIENT=001    
-SAP\_USER=your\_actual\_username    
+\# \==========================================      
+\# 4\. SAP CREDENTIALS (Cold Start Injection)      
+\# \==========================================      
+SAP\_HOST=your\_own\_SAP\_Server\_ip\_address      
+SAP\_SYSTEM=NPL      
+SAP\_CLIENT=001      
+SAP\_USER=your\_actual\_username      
 SAP\_PASSWORD=your\_actual\_password
 
-\# \==========================================    
-\# 6\. LOGGING & MICROSERVICES    
-\# \==========================================    
-LOG\_RETENTION\_DAYS=7    
+\# \==========================================      
+\# 5\. LOGGING & MICROSERVICES      
+\# \==========================================      
+LOG\_RETENTION\_DAYS=7      
 STT\_SERVER\_URL=your\_own\_STT\_Server\_ip\_address
+
+\# \==========================================  
+\# 6\. AI PERSONA & IDENTITY  
+\# \==========================================  
+BOT\_NAME=Veronica  
+USER\_NAME=Bin  
+BOT\_PERSONA=You are an incredibly intelligent, highly efficient AI assistant named Veronica. You manage server systems and provide answers for Tony. You speak respectfully, but you always include a touch of dry, sarcastic humor.
+
+SHEET\_ID\_GROCERY="your\_44\_character\_sheet\_id\_here"
 
 ### **5\. Start the bot**
 
 node bot.js \--debug
 
+## **🪟 Installation (Windows SAP GUI Robot)**
+
+To allow the Node.js Linux Agent to control the SAP GUI visually without Windows Session 0 Isolation issues, this project utilizes a **WebSocket Architecture**.
+
+1. Copy the windows\_robot/ folder from this repository to your Windows machine (e.g., your Surface Pro).  
+2. Install **Node.js** on the Windows machine.  
+3. Open a Command Prompt inside the windows\_robot folder and install the dependencies:  
+   npm install socket.io-client
+
+4. Open client.js in a text editor and ensure the linuxBrainIP variable points to your Linux LXC's IP address (e.g., http://192.168.1.243:3000).  
+5. Ensure your SAP GUI client has **Scripting Enabled** (in the Options menu) and that popup notifications are turned off.  
+6. Run the client\!  
+   node client.js
+
+The Windows Robot will now securely connect to the Linux Brain and idle silently in the background until Telegram beams a JSON payload to it\!
+
 ## **🎙️ Installation (STT Whisper Microservice LXC)**
 
 To keep the AI GPU free, Speech-to-Text runs on a separate CPU-only Ubuntu LXC. We use the small.en model which provides exceptional accuracy for accents.
 
-\# Install dependencies    
-apt update && apt install \-y curl build-essential ffmpeg git python3 make g++ wget    
-curl \-fsSL \[https://deb.nodesource.com/setup\_20.x\](https://deb.nodesource.com/setup\_20.x) | bash \-    
+\# Install dependencies      
+apt update && apt install \-y curl build-essential ffmpeg git python3 make g++ wget      
+curl \-fsSL \[https://deb.nodesource.com/setup\_20.x\](https://deb.nodesource.com/setup\_20.x) | bash \-      
 apt install \-y nodejs
 
-\# Deploy Code    
-mkdir \-p \~/stt-microservice && cd \~/stt-microservice    
-npm init \-y    
+\# Deploy Code      
+mkdir \-p \~/stt-microservice && cd \~/stt-microservice      
+npm init \-y      
 npm install express multer fluent-ffmpeg whisper-node
 
-\# Start via PM2    
-npm install \-g pm2    
-pm2 start server.js \--name stt-server    
-pm2 startup    
+\# Start via PM2      
+npm install \-g pm2      
+pm2 start server.js \--name stt-server      
+pm2 startup      
 pm2 save
-
-## **🪟 Installation (Windows SAP SAP GUI Host)**
-
-To allow the Node.js Linux Agent to control the SAP GUI visually, you must bypass Windows **Session 0 Isolation**. If you try to run SAP GUI directly via an SSH command, it will open invisibly in the background (Session 0\) and the VBScript automation will fail.
-
-**1\. Install OpenSSH Server on Windows (Run as Admin in PowerShell):**
-
-Add-WindowsCapability \-Online \-Name OpenSSH.Server\~\~\~\~0.0.1.0    
-Start-Service sshd    
-Set-Service \-Name sshd \-StartupType 'Automatic'
-
-**2\. Configure the SSH Key Bypass:**
-
-Generate an SSH key on the Linux LXC (ssh-keygen) and copy the public key to C:\\Users\\YourUser\\.ssh\\authorized\_keys on the Windows host so the bot can connect passwordlessly.
-
-**3\. The Session 0 Bypass (Scheduled Task):**
-
-1. Open Windows **Task Scheduler**.  
-2. Create a new Task named RunSAPAuto.  
-3. Set the security option to: **"Run only when user is logged on"** (CRITICAL: This forces the task into the visible desktop session, bypassing Session 0).  
-4. **Action:** Start a program. Point it to your VBScript handler.  
-5. In your Node.js Bot, execute the task over SSH like this:  
-   ssh user@windowshost "schtasks /run /tn \\"RunSAPAuto\\""
 
 ## **🖥️ Homelab & Hardware Specs**
 
@@ -187,7 +189,7 @@ For those curious about the hardware running this local AI architecture, here is
 * **AI Node:** Ollama Server running qwen3.5:4b  
 * **Main Bot Node:** Ubuntu LXC  
 * **STT Node:** Ubuntu LXC (CPU-only, running whisper-node small.en model)  
-* **SAP Host:** Remote Windows VM for GUI Automation  
+* **SAP Host:** Remote Windows PC (Surface Pro) for WebSocket GUI Automation (socket.io client)  
 * **CPU:** Intel Core i5  
 * **RAM:** 16GB  
 * **GPU (For Ollama):** NVIDIA GTX 1060 (6GB VRAM)

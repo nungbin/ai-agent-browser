@@ -18,10 +18,24 @@ module.exports = {
 
         try {
             if (action === 'gui') {
-                await context.bot.sendMessage(chatId, `🖥️ Detected TCode *${tcode}*. Initializing Remote SAP GUI...`, { parse_mode: "Markdown" });
-                // TODO: GUI Logic
+                // ==========================================
+                // 🖥️ GUI MODE (WebSocket RPA)
+                // ==========================================
+                const modulePath = path.join(__dirname, 'gui_modules', 'sapgui.js');
+                
+                if (!fs.existsSync(modulePath)) {
+                    await context.bot.sendMessage(chatId, `🛠️ The GUI module for Windows RPA is not built yet!`, { parse_mode: "Markdown" });
+                    return null;
+                }
+
+                // Route the payload to our new WebSocket execution module!
+                const sapguiLogic = require(modulePath);
+                await sapguiLogic(payload, context);
                 
             } else if (action === 'rfc') {
+                // ==========================================
+                // 🔌 RFC MODE (TCP PROTOCOL)
+                // ==========================================
                 if (task === 'unknown' || !task) {
                     await context.bot.sendMessage(chatId, `⚠️ Unrecognized RFC task.`);
                     return null;
@@ -50,6 +64,9 @@ module.exports = {
                 await client.close();
 
             } else if (action === 'rest') {
+                // ==========================================
+                // 🌐 REST / ODATA MODE (HTTP PROTOCOL)
+                // ==========================================
                 if (task === 'unknown' || !task) return null;
                 
                 const modulePath = path.join(__dirname, 'rest_modules', `${task}.js`);

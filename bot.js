@@ -10,6 +10,7 @@ const commandHandler = require('./helpers/commandHandler');
 const voiceHelper = require('./helpers/voiceHelper');
 const cronHelper = require('./helpers/cronHelper');
 const logger = require('./helpers/logger');
+const socketManager = require('./helpers/socketManager'); // <-- 🌟 NEW: Import Socket Manager
 
 process.on('uncaughtException', (err) => logger.error('CRITICAL EXCEPTION', err.stack));
 process.on('unhandledRejection', (reason) => logger.error('UNHANDLED REJECTION', reason.stack || reason));
@@ -350,6 +351,9 @@ async function startSystem() {
     await loadSkills();
     commandHandler.register(bot, state);
     cronHelper.init((chatId, task, isCron) => processPipeline(chatId, task, isCron));
+    
+    // 🌟 NEW: Start the Socket Manager to listen for the Windows Robot!
+    socketManager.initSocketServer();
     
     // Dynamically display whether Persona is ON or OFF at startup
     const status = state.personaEnabled ? "ON" : "OFF";
