@@ -30,6 +30,14 @@
                         
                         <contentRight>
                             <Button 
+                                id="saveBtn"
+                                icon="sap-icon://save" 
+                                text="Save to Sheet"
+                                type="Emphasized"
+                                visible="{viewModel>/isEditable}"
+                                press="onSaveData" />
+
+                            <Button 
                                 id="editToggleBtn"
                                 icon="{= ${viewModel>/isEditable} ? 'sap-icon://display' : 'sap-icon://edit' }" 
                                 text="{= ${viewModel>/isEditable} ? 'View Mode' : 'Edit Mode' }"
