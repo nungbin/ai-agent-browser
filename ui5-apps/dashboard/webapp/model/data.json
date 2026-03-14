@@ -1,0 +1,18 @@
+{
+  "2022": {
+    "LastName": "Doe",
+    "FirstName": "John",
+    "JobTitle": "Software Developer",
+    "EmployerName": "Acme Corp",
+    "EmployerAddress": "123 Corporate Blvd, Tech City, TC 90210",
+    "Question1Answer": 1
+  },
+  "2021": {
+    "LastName": "Doe",
+    "FirstName": "Jane",
+    "JobTitle": "Junior Developer",
+    "EmployerName": "Globex Inc",
+    "EmployerAddress": "456 Industrial Way, Old Town, OT 12345",
+    "Question1Answer": 0
+  }
+}

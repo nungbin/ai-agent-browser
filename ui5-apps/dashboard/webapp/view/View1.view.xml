@@ -1,15 +1,49 @@
 <mvc:View controllerName="com.agentbrowser.dashboard.controller.View1"
-    xmlns:mvc="sap.ui.core.mvc" displayBlock="true"
-    xmlns="sap.m">
-    <Page id="page" title="{i18n>title}">
-        <content>
-        	<Button text="Hello World 2!"
-					press="onPress"
-					ariaDescribedBy="defaultButtonDescription genericButtonDescription">
-					<layoutData>
-						<FlexItemData growFactor="1" />
-					</layoutData>
-			</Button>
-        </content>
-    </Page>
+    xmlns:mvc="sap.ui.core.mvc"
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core"
+    displayBlock="true">
+    
+    <SplitApp id="testingSplitApp" mode="HideMode">
+        
+        <masterPages>
+            <Page id="masterPage" title="Year">
+                <List id="yearList" mode="SingleSelectMaster" selectionChange="onYearSelect">
+                    <StandardListItem title="2022" type="Active" />
+                    <StandardListItem title="2021" type="Active" />
+                    <StandardListItem title="2020" type="Active" />
+                </List>
+            </Page>
+        </masterPages>
+
+        <detailPages>
+            <Page id="detailPage">
+                <customHeader>
+                    <Bar>
+                        <contentLeft>
+                            <Button icon="sap-icon://menu2" type="Transparent" press="onMenuPress" />
+                        </contentLeft>
+                        
+                        <contentMiddle>
+                            <Title text="{dataModel>FirstName} {dataModel>LastName} - {viewModel>/currentYear} Form" />
+                        </contentMiddle>
+                        
+                        <contentRight>
+                            <Button 
+                                id="editToggleBtn"
+                                icon="{= ${viewModel>/isEditable} ? 'sap-icon://display' : 'sap-icon://edit' }" 
+                                text="{= ${viewModel>/isEditable} ? 'View Mode' : 'Edit Mode' }"
+                                type="{= ${viewModel>/isEditable} ? 'Accept' : 'Transparent' }"
+                                press="onToggleEdit" />
+                        </contentRight>
+                    </Bar>
+                </customHeader>
+
+                <content>
+                    <VBox id="dynamicFormContainer" />
+                </content>
+            </Page>
+        </detailPages>
+        
+    </SplitApp>
 </mvc:View>

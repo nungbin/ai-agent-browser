@@ -1,0 +1,47 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:form="sap.ui.layout.form"
+    xmlns:core="sap.ui.core">
+
+    <VBox>
+        <Panel expandable="true" expanded="true" headerText="Part A" width="auto" class="sapUiResponsiveMargin">
+            <form:SimpleForm layout="ResponsiveGridLayout" columnsL="2" columnsM="2">
+                <form:content>
+                    <Label text="Last Name" />
+                    <Input value="{dataModel>LastName}" editable="{viewModel>/isEditable}" />
+                    
+                    <Label text="First Name" />
+                    <Input value="{dataModel>FirstName}" editable="{viewModel>/isEditable}" />
+                    
+                    <Label text="Job title" />
+                    <Input value="{dataModel>JobTitle}" editable="{viewModel>/isEditable}" />
+                </form:content>
+            </form:SimpleForm>
+        </Panel>
+
+        <Panel expandable="true" expanded="true" headerText="Part B" width="auto" class="sapUiResponsiveMargin">
+            <form:SimpleForm layout="ResponsiveGridLayout">
+                <form:content>
+                    <Label text="Employer Name" />
+                    <Input value="{dataModel>EmployerName}" editable="{viewModel>/isEditable}" />
+                    
+                    <Label text="Employer Address" />
+                    <Input value="{dataModel>EmployerAddress}" editable="{viewModel>/isEditable}" />
+                </form:content>
+            </form:SimpleForm>
+        </Panel>
+
+        <Panel expandable="true" expanded="false" headerText="Part C" width="auto" class="sapUiResponsiveMargin">
+            <form:SimpleForm layout="ResponsiveGridLayout">
+                <form:content>
+                    <Label text="Question 1" wrapping="true"/>
+                    <RadioButtonGroup columns="2" editable="{viewModel>/isEditable}" selectedIndex="{dataModel>Question1Answer}">
+                        <RadioButton text="Yes" />
+                        <RadioButton text="No" />
+                    </RadioButtonGroup>
+                </form:content>
+            </form:SimpleForm>
+        </Panel>
+    </VBox>
+
+</core:FragmentDefinition>
