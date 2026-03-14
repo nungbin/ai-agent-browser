@@ -1,0 +1,15 @@
+<mvc:View controllerName="com.agentbrowser.dashboard.controller.View1"
+    xmlns:mvc="sap.ui.core.mvc" displayBlock="true"
+    xmlns="sap.m">
+    <Page id="page" title="{i18n>title}">
+        <content>
+        	<Button text="Hello World 2!"
+					press="onPress"
+					ariaDescribedBy="defaultButtonDescription genericButtonDescription">
+					<layoutData>
+						<FlexItemData growFactor="1" />
+					</layoutData>
+			</Button>
+        </content>
+    </Page>
+</mvc:View>
