@@ -2,16 +2,19 @@
 
 🌱 **A Personal Journey:** This repository represents my personal journey learning how to code and build Artificial Intelligence systems. I started this project to understand local LLMs, Node.js, and homelab architecture. What began as a simple script has evolved into a modular, voice-activated AI Agent and System Administrator. This code documents my progress, my mistakes, and my "aha\!" moments. I hope it inspires others learning to build their own AI companions\!
 
-An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a C/Python Coder, an Enterprise SAP Controller, and a Stateful Assistant. **Note: This agent is accessed exclusively via the Telegram app—there is no Web UI or Terminal User Interface (TUI).** Powered by local LLMs (Ollama) and designed with a highly extensible **Plug-n-Play Skill Registry**.
+An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a C/Python Coder, an Enterprise SAP Controller, and a Stateful Assistant. **Note: While primarily accessed via the Telegram app, this agent now includes a decoupled Enterprise SAPUI5 Web Dashboard designed for macro-recording and RPA bot training.** Powered by local LLMs (Ollama) and designed with a highly extensible **Plug-n-Play Skill Registry**.
 
 ## **🚀 Core Capabilities**
 
 * **Dynamic Skill Registry:** Simply drop a new folder into skills/ with a skill.js and skill.md, and the bot automatically learns how to use it on boot\! No core code edits required.  
 * **🗣️ Dynamic Wake-Word Persona ("Veronica"):** By default, the core routing AI acts strictly robotic to ensure 100% JSON accuracy and prevent hallucinations. However, if the user explicitly uses the wake-word "Veronica," the core brain seamlessly delegates a usePersona flag to the target skill, allowing the bot to reply with a friendly, conversational personality for that specific request without breaking the underlying architecture.  
-* **📊 Interactive Google Sheets (AppSheet Backend):** A modular "Sheet Aliasing" architecture that turns the Telegram bot into a stateful AppSheet clone. Features include:  
-  * **Dynamic UI Generation:** Automatically reads column headers to generate Telegram Inline Keyboards (buttons) when parameters (like Store names) are missing.  
+* **📊 Interactive Google Sheets (AppSheet Backend):** A modular architecture that turns Google Sheets into a headless database for the Telegram bot.  
+  * **Sheet Aliasing:** Turns the Telegram bot into a stateful AppSheet clone with dynamic UI generation (inline keyboards) when parameters are missing.  
   * **Collision-Proof IDs:** Generates AppSheet-compatible unique 8-character hex IDs via Node.js crypto with pre-append collision checks.  
   * **Stateful Flow without DBs:** Passes complex state directly through Telegram's hidden callback\_data payloads, avoiding the need for external session databases.  
+* **🌐 Serverless UI5 Architecture (Fiori \+ Google Sheets DB):** \* Features a decoupled Enterprise SAPUI5 frontend (ui5-apps/dashboard) built with dynamic XML fragments, JSON model binding, and strict expression binding.  
+  * **Headless REST DB:** Utilizes Google Apps Script as a serverless REST API (doGet and doPost), allowing the UI5 frontend to perform instant CRUD operations directly against a Google Sheet. No traditional SQL database required.  
+  * *Note on Version Control:* The Google Apps Script backend code can be synced directly to this GitHub repository using Google's clasp (Command Line Apps Script Projects) tool.  
 * **Stateful CLI:** Tracks its Current Working Directory (CWD). If you cd sandbox, it stays there for subsequent commands. Includes a safe-list for auto-execution and a Telegram confirmation button for unknown commands.  
 * **Secure Sandbox Generation:** AI-generated scripts are securely sanitized and written exclusively to the sandbox/ directory, preventing directory traversal attacks. Markdown formatting is automatically stripped so code is instantly executable.  
 * **🔌 Enterprise SAP Integration (Hybrid Architecture):** \* **RFC Mode:** Securely connects to SAP backends via TCP/RFC (node-rfc \+ SAP C++ SDK) to pull headless data straight from the database. (e.g., ST22 Shortdumps, SLG1 Application Logs).  
@@ -23,44 +26,46 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
 
 ## **📂 Project Structure**
 
-/agent-browser          
-  ├── bot.js                  \# The Core Brain / Router / Wake-Word Detector         
-  ├── google-credentials.json \# Service Account keys for Google APIs (Ignored in Git)        
-  ├── prompts/          
-  │    └── system\_prompt.txt  \# The base instructions for the LLM          
-  ├── helpers/          
-  │    ├── commandHandler.js  \# Telegram slash commands (/safe, /clear)          
-  │    ├── cronHelper.js      \# Scheduling logic          
-  │    ├── logger.js          \# Custom environment-aware logging          
-  │    ├── voiceHelper.js     \# TTS Engine and STT API integrations       
-  │    └── socketManager.js   \# WebSocket server for Windows RPA (Surface Pro)         
-  ├── skills/                 \# DYNAMIC PLUG-N-PLAY CAPABILITIES          
-  │    ├── cli/               \# e.g., skill.js and skill.md          
-  │    ├── news/          
-  │    ├── sap/          
-  │    │    ├── skill.js      \# Main SAP routing switchboard        
-  │    │    ├── skill.md      \# Instructions for the AI regarding SAP JSON schemas      
-  │    │    ├── gui\_modules/  \# Windows RPA WebSocket modules      
-  │    │    │    └── sapgui.js        
-  │    │    ├── rfc\_modules/  \# node-rfc headless extraction modules      
-  │    │    └── rest\_modules/ \# HTTP/OData extraction modules      
-  │    ├── sheets/          
-  │    │    ├── skill.js      \# Switchboard for sheet aliasing        
-  │    │    └── modules/        
-  │    │         └── grocery.js \# Handles AppSheet logic & Telegram UI buttons        
-  │    ├── weather/          
-  │    └── write\_file/       
-  ├── windows\_robot/          \# 🪟 Windows RPA Client (Copy this folder to Surface Pro)      
-  │    ├── client.js          \# Listens for Linux payloads via Socket.io      
-  │    ├── surgeon.vbs        \# VBScript that physically drives SAP GUI (SU01)      
-  │    ├── se38\_creator.vbs   \# VBScript for headless ABAP program injection (SE38)    
-  │    ├── se11\_creator.vbs   \# VBScript for Data Dictionary structure generation (SE11)  
-  │    ├── package.json       \# Node dependencies for the client      
-  │    └── package-lock.json         
-  ├── sap\_abap\_sources/       \# Documentation & ABAP Code for the SAP Backend          
-  ├── stt-microservice/       \# Source code backup for the Whisper STT LXC          
-  ├── logs/                   \# Auto-generated daily logs (Ignored in Git)          
-  ├── data/                   \# Persistent memory and settings (Ignored in Git)          
+/agent-browser            
+  ├── bot.js                  \# The Core Brain / Router / Wake-Word Detector          
+  ├── google-credentials.json \# Service Account keys for Google APIs (Ignored in Git)          
+  ├── prompts/            
+  │    └── system\_prompt.txt  \# The base instructions for the LLM            
+  ├── helpers/            
+  │    ├── commandHandler.js  \# Telegram slash commands (/safe, /clear)            
+  │    ├── cronHelper.js      \# Scheduling logic            
+  │    ├── logger.js          \# Custom environment-aware logging            
+  │    ├── voiceHelper.js     \# TTS Engine and STT API integrations         
+  │    └── socketManager.js   \# WebSocket server for Windows RPA (Surface Pro)          
+  ├── skills/                 \# DYNAMIC PLUG-N-PLAY CAPABILITIES            
+  │    ├── cli/               \# e.g., skill.js and skill.md            
+  │    ├── news/            
+  │    ├── sap/            
+  │    │    ├── skill.js      \# Main SAP routing switchboard          
+  │    │    ├── skill.md      \# Instructions for the AI regarding SAP JSON schemas        
+  │    │    ├── gui\_modules/  \# Windows RPA WebSocket modules        
+  │    │    │    └── sapgui.js          
+  │    │    ├── rfc\_modules/  \# node-rfc headless extraction modules        
+  │    │    └── rest\_modules/ \# HTTP/OData extraction modules        
+  │    ├── sheets/            
+  │    │    ├── skill.js      \# Switchboard for sheet aliasing          
+  │    │    └── modules/          
+  │    │         └── grocery.js \# Handles AppSheet logic & Telegram UI buttons          
+  │    ├── weather/            
+  │    └── write\_file/         
+  ├── ui5-apps/               \# 🌐 ENTERPRISE FRONTENDS & RPA TRAINING GYM  
+  │    └── dashboard/         \# SAP Fiori UI5 App (Dynamic Fragments & JSON Binding)  
+  ├── windows\_robot/          \# 🪟 Windows RPA Client (Copy this folder to Surface Pro)        
+  │    ├── client.js          \# Listens for Linux payloads via Socket.io        
+  │    ├── surgeon.vbs        \# VBScript that physically drives SAP GUI (SU01)        
+  │    ├── se38\_creator.vbs   \# VBScript for headless ABAP program injection (SE38)      
+  │    ├── se11\_creator.vbs   \# VBScript for Data Dictionary structure generation (SE11)    
+  │    ├── package.json       \# Node dependencies for the client        
+  │    └── package-lock.json          
+  ├── sap\_abap\_sources/       \# Documentation & ABAP Code for the SAP Backend            
+  ├── stt-microservice/       \# Source code backup for the Whisper STT LXC            
+  ├── logs/                   \# Auto-generated daily logs (Ignored in Git)            
+  ├── data/                   \# Persistent memory and settings (Ignored in Git)            
   └── sandbox/                \# Workspace for AI-generated code (Ignored in Git)
 
 ## **🗣️ Usage Examples (Text & Voice)**
@@ -86,8 +91,8 @@ You can send these requests to the bot via **Text Message** or by holding down t
 
 To use the SAP RFC module, you must download (please check SAP Note 2573790\) the proprietary SAP NW RFC SDK (7.50+) from the SAP Support Portal and install it on your Linux container:
 
-\# Extract to /usr/local/sap/nwrfcsdk          
-sudo nano /etc/ld.so.conf.d/nwrfcsdk.conf \# Add path to lib directory          
+\# Extract to /usr/local/sap/nwrfcsdk            
+sudo nano /etc/ld.so.conf.d/nwrfcsdk.conf \# Add path to lib directory            
 sudo ldconfig
 
 ### **2\. Google Sheets API Prerequisites**
@@ -96,53 +101,53 @@ Go to the Google Cloud Console, enable the **Google Sheets API**, and create a S
 
 ### **3\. Clone & Install**
 
-git clone \<repository\_url\>          
-cd agent-browser          
-npm install      
+git clone \<repository\_url\>            
+cd agent-browser            
+npm install        
 npm install socket.io \# Required for the Windows Robot connection
 
 ### **4\. Configure Environment variables**
 
 Rename .env.example to .env (or create a new .env file) and populate it:
 
-\# \==========================================          
-\# 1\. CORE TELEGRAM & MEMORY CONFIG          
-\# \==========================================          
-TELEGRAM\_TOKEN=your\_telegram\_bot\_token          
+\# \==========================================            
+\# 1\. CORE TELEGRAM & MEMORY CONFIG            
+\# \==========================================            
+TELEGRAM\_TOKEN=your\_telegram\_bot\_token            
 MEMORY\_LIMIT=30
 
-\# \==========================================          
-\# 2\. LOCAL AI / OLLAMA CONFIG          
-\# \==========================================          
-OLLAMA\_IP=your\_ollama\_ip\_address          
+\# \==========================================            
+\# 2\. LOCAL AI / OLLAMA CONFIG            
+\# \==========================================            
+OLLAMA\_IP=your\_ollama\_ip\_address            
 OLLAMA\_MODEL=qwen3.5:4b
 
-\# \==========================================          
-\# 3\. WINDOWS HOST CONFIG (For SAP GUI Automation)          
-\# \==========================================          
-WINDOWS\_HOST=your\_own\_Windows\_ip\_address          
+\# \==========================================            
+\# 3\. WINDOWS HOST CONFIG (For SAP GUI Automation)            
+\# \==========================================            
+WINDOWS\_HOST=your\_own\_Windows\_ip\_address            
 WINDOWS\_USER=your\_windows\_admin\_user
 
-\# \==========================================          
-\# 4\. SAP CREDENTIALS (Cold Start Injection)          
-\# \==========================================          
-SAP\_HOST=your\_own\_SAP\_Server\_ip\_address          
-SAP\_SYSTEM=NPL          
-SAP\_CLIENT=001          
-SAP\_USER=your\_actual\_username          
+\# \==========================================            
+\# 4\. SAP CREDENTIALS (Cold Start Injection)            
+\# \==========================================            
+SAP\_HOST=your\_own\_SAP\_Server\_ip\_address            
+SAP\_SYSTEM=NPL            
+SAP\_CLIENT=001            
+SAP\_USER=your\_actual\_username            
 SAP\_PASSWORD=your\_actual\_password
 
-\# \==========================================          
-\# 5\. LOGGING & MICROSERVICES          
-\# \==========================================          
-LOG\_RETENTION\_DAYS=7          
+\# \==========================================            
+\# 5\. LOGGING & MICROSERVICES            
+\# \==========================================            
+LOG\_RETENTION\_DAYS=7            
 STT\_SERVER\_URL=your\_own\_STT\_Server\_ip\_address
 
-\# \==========================================      
-\# 6\. AI PERSONA & IDENTITY      
-\# \==========================================      
-BOT\_NAME=Veronica      
-USER\_NAME=Tony      
+\# \==========================================        
+\# 6\. AI PERSONA & IDENTITY        
+\# \==========================================        
+BOT\_NAME=Veronica        
+USER\_NAME=Tony        
 BOT\_PERSONA=You are an incredibly intelligent, highly efficient AI assistant named Veronica. You manage server systems and provide answers for Tony. You speak respectfully, but you always include a touch of dry, sarcastic humor.
 
 SHEET\_ID\_GROCERY="your\_44\_character\_sheet\_id\_here"
@@ -150,6 +155,15 @@ SHEET\_ID\_GROCERY="your\_44\_character\_sheet\_id\_here"
 ### **5\. Start the bot**
 
 node bot.js \--debug
+
+### **6\. UI5 Dashboard & Google Sheets Database Setup**
+
+To run the decoupled SAPUI5 frontend and its serverless Apps Script backend:
+
+1. **The Database:** Create a Google Sheet with tabs for each dynamic view (e.g., 2022, 2021). Establish column headers matching your UI5 model (e.g., LastName, FirstName).  
+2. **The REST API:** Open **Extensions \> Apps Script** in your Google Sheet. Add your doGet() and doPost() methods to parse and serve the sheet data. Click **Deploy \> New Deployment** as a **Web App** with access set to "Anyone".  
+3. **The Frontend:** Open /ui5-apps/dashboard/webapp/controller/View1.controller.js and update the \_sApiUrl variable with your new Google Web App URL.  
+4. **Run Locally:** Navigate into the ui5-apps/dashboard directory and run your preferred local web server (or ui5 serve if using the UI5 Tooling CLI).
 
 ## **🪟 Installation (Windows SAP GUI Robot)**
 
@@ -180,20 +194,20 @@ The Windows Robot will now securely connect to the Linux Brain and idle silently
 
 To keep the AI GPU free, Speech-to-Text runs on a separate CPU-only Ubuntu LXC. We use the small.en model which provides exceptional accuracy for accents.
 
-\# Install dependencies          
-apt update && apt install \-y curl build-essential ffmpeg git python3 make g++ wget          
-curl \-fsSL \[https://deb.nodesource.com/setup\_20.x\](https://deb.nodesource.com/setup\_20.x) | bash \-          
+\# Install dependencies            
+apt update && apt install \-y curl build-essential ffmpeg git python3 make g++ wget            
+curl \-fsSL \[https://deb.nodesource.com/setup\_20.x\](https://deb.nodesource.com/setup\_20.x) | bash \-            
 apt install \-y nodejs
 
-\# Deploy Code          
-mkdir \-p \~/stt-microservice && cd \~/stt-microservice          
-npm init \-y          
+\# Deploy Code            
+mkdir \-p \~/stt-microservice && cd \~/stt-microservice            
+npm init \-y            
 npm install express multer fluent-ffmpeg whisper-node
 
-\# Start via PM2          
-npm install \-g pm2          
-pm2 start server.js \--name stt-server          
-pm2 startup          
+\# Start via PM2            
+npm install \-g pm2            
+pm2 start server.js \--name stt-server            
+pm2 startup            
 pm2 save
 
 ## **🖥️ Homelab & Hardware Specs**
