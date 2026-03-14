@@ -20,7 +20,7 @@
     "node-cron": "^4.2.1",
     "node-rfc": "^3.3.1",
     "node-telegram-bot-api": "^0.67.0",
-    "puppeteer": "^24.37.5",
+    "puppeteer": "^24.39.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "rss-parser": "^3.13.0",
