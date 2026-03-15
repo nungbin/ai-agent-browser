@@ -169,8 +169,9 @@ SHEET_ID_GROCERY="your_44_character_sheet_id_here"
 # ==========================================
 # 8. ABAP AI CODER CONFIG (MCP + GEMINI)
 # ==========================================
+SAP_SYSTEM_URL=your_own_SAP_Server_ip_address:8000
 GEMINI_API_KEY=put_your_free_google_ai_studio_key_here
-MCP_ABAP_COMMAND=npx -y mcp-abap-adt
+MCP_ABAP_COMMAND=node ./node_modules/@mcp-abap-adt/core/bin/mcp-abap-adt.js
 ```
 
 ### **5. Start the bot**

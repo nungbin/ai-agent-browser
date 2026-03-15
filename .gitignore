@@ -5,6 +5,8 @@ node_modules/
 
 # Environment
 .env
+.mcp_auth.env
+*.env
 
 # Data, Persistence, and Prompts
 data/
