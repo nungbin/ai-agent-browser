@@ -15,19 +15,13 @@ socket.on('execute_sap', async (payload) => {
     // 🌐 HANDLE WEB RPA (PUPPETEER)
     if (payload.type === 'BATCH_DASHBOARD_TESTING') {
         await runBrowserAutomation(payload, socket);
-        return; // Early return ensures VBScript logic is completely skipped
+        return; 
     }
 
     // 🪟 HANDLE DESKTOP RPA (VBSCRIPT)
-    // We determine which .vbs to run based on the payload provided by Linux.
     const scriptFile = payload.vbs_file || 'surgeon.vbs';
-    
-    // Prepare base arguments required by ALL our VBScripts. 
     const args = ['//nologo', scriptFile, payload.username, payload.password, payload.tcode];
     
-    // 🛡️ STRICT ENTERPRISE GUARDRAIL 🛡️
-    // Only pass the arguments the specific script expects, in the exact order it expects them!
-    // This prevents the "Argument Shift" bug where an SE38 script accidentally reads the SU01 target user.
     if (payload.tcode === 'SU01') {
         args.push(payload.target_user);
         args.push(payload.target_pass);
@@ -38,16 +32,13 @@ socket.on('execute_sap', async (payload) => {
     }
 
     socket.emit('status_update', `Spawning VBS Surgeon: ${scriptFile} for ${payload.tcode}...`);
-
     const surgeon = spawn('cscript', args);
 
-    // Track standard output logs
     surgeon.stdout.on('data', (data) => {
         const output = data.toString().trim();
         if (output) socket.emit('status_update', output);
     });
 
-    // Track actual VBScript crashes/errors
     surgeon.stderr.on('data', (data) => {
         socket.emit('status_update', `⚠️ VBS Error: ${data.toString()}`);
     });
@@ -76,7 +67,12 @@ async function runBrowserAutomation(batchData, socket) {
 
     try {
         page.setDefaultTimeout(45000); 
-        await page.goto(baseUrl, { waitUntil: 'networkidle2' });
+        
+        // 🛡️ FIX 1: Use domcontentloaded instead of networkidle2 for Fiori apps
+        await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+        
+        // Give Fiori an extra 2 seconds to render its XML views after the DOM is loaded
+        await new Promise(r => setTimeout(r, 2000));
 
         const physicalClick = async (text) => {
             const coords = await page.evaluate((txt) => {
@@ -106,7 +102,6 @@ async function runBrowserAutomation(batchData, socket) {
             const task = tasks[i];
             socket.emit('status_update', `[${i+1}/${tasks.length}] Updating ${task.year}...`);
 
-            // 1. Open the Navigation menu so the year is visible
             try {
                 await physicalClick("Navigation");
                 await new Promise(r => setTimeout(r, 1000)); 
@@ -114,17 +109,12 @@ async function runBrowserAutomation(batchData, socket) {
                 console.log("Navigation button not found, assuming sidebar is already open.");
             }
 
-            // 2. Click the Year
             await physicalClick(task.year.toString());
-            
-            // 3. Wait for the year's data to load from the SAP backend
             socket.emit('status_update', `Waiting for ${task.year} data to load...`);
             await new Promise(r => setTimeout(r, 2500)); 
 
-            // 4. Edit Mode
             await physicalClick("Edit Mode");
             
-            // 5. Visual Form Parser
             socket.emit('status_update', `Locating 'Job title' on screen...`);
             const inputCoords = await page.evaluate(() => {
                 const elements = Array.from(document.querySelectorAll('*'));
@@ -165,29 +155,23 @@ async function runBrowserAutomation(batchData, socket) {
 
             if (!inputCoords.found) throw new Error("Could not visually match the Job Title input box.");
 
-            // 6. Append Mode Typing Logic
             await page.mouse.click(inputCoords.x, inputCoords.y, { clickCount: 1 }); 
             await new Promise(r => setTimeout(r, 200));
             
-            // Select All, move to end
             await page.keyboard.down('Control');
             await page.keyboard.press('a');
             await page.keyboard.up('Control');
             await page.keyboard.press('ArrowRight');
             await new Promise(r => setTimeout(r, 100));
             
-            // Type the space and the text
             await page.keyboard.type(" " + task.jobTitle, { delay: 60 }); 
             
-            // Force Fiori Data Sync
             await page.keyboard.press('Enter');
             await page.keyboard.press('Tab');
             await new Promise(r => setTimeout(r, 1000));
 
-            // 7. Save
             await physicalClick("Save to Sheet");
             
-            // 8. Verify
             try {
                 await page.waitForFunction(() => {
                     const toast = document.querySelector('.sapMMessageToast');
@@ -207,10 +191,25 @@ async function runBrowserAutomation(batchData, socket) {
         socket.emit('task_complete', { status: "Success" });
 
     } catch (err) {
-        const screenPath = path.join(__dirname, 'rpa_failure.png');
-        await page.screenshot({ path: screenPath });
-        socket.emit('status_update', `❌ Error: ${err.message}`);
+        socket.emit('status_update', `❌ Primary Web Error: ${err.message}`);
+        
+        // 🛡️ FIX 2: Bulletproof the screenshot recovery mechanism (The Double-Fault fix)
+        try {
+            if (page && !page.isClosed()) {
+                const screenPath = path.join(__dirname, 'rpa_failure.png');
+                await page.screenshot({ path: screenPath });
+                socket.emit('status_update', `📸 Failure screenshot saved to rpa_failure.png`);
+            }
+        } catch (screenshotErr) {
+            console.error("Could not take screenshot:", screenshotErr.message);
+            socket.emit('status_update', `⚠️ Could not capture screenshot.`);
+        }
+        
         socket.emit('task_complete', { status: "Failed", error: err.message });
-        if (browser) await browser.close();
+        
+        // Safely try to close the browser
+        try {
+            if (browser) await browser.close();
+        } catch (closeErr) {}
     }
 }
