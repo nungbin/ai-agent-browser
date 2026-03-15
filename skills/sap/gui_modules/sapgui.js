@@ -37,6 +37,11 @@ module.exports = async (parsed, context) => {
         return await bot.sendMessage(chatId, "⚠️ **Offline:** The Surface Pro robot is not currently connected.", { parse_mode: 'Markdown' });
     }
 
+    // 🌟 NEW: Determine which VBScript file to trigger based on T-Code!
+    let vbsFileToRun = 'surgeon.vbs'; // Default for SU01
+    if (tcode === 'SE38') vbsFileToRun = 'se38_creator.vbs';
+    if (tcode === 'SE11') vbsFileToRun = 'se11_creator.vbs';
+
     let targetDisplay = targetUser;
     if (tcode === 'SE38') targetDisplay = programName;
     if (tcode === 'SE11') targetDisplay = structureName;
@@ -53,14 +58,16 @@ module.exports = async (parsed, context) => {
         } catch (e) { /* Ignore rate-limit errors */ }
     };
 
+    // 🌟 NEW: The payload now includes vbs_file and struct_name
     const payload = {
         username: process.env.SAP_USER,
         password: process.env.SAP_PASSWORD,
         tcode: tcode,
+        vbs_file: vbsFileToRun,     // <--- Added so Windows Robot knows what to run!
         target_user: targetUser,
         target_pass: initialPassword,
         program_name: programName,
-        structure_name: structureName
+        struct_name: structureName  // <--- Fixed variable name to match client.js
     };
 
     try {
