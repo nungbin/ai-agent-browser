@@ -150,13 +150,29 @@ If fieldId <> "" Then
     session.findById(fieldId).text = argTargetPass
     WScript.Echo "  -> Injected Password 1!"
 Else
-    WScript.Echo "  -> ERROR: Could not find Password 1 box."
+    WScript.Echo "  -> ERROR: Could not find Password 1 box. (User may already exist or screen is locked)"
+    
+    ' 🛡️ GUARDRAIL: Close SAP cleanly and throw an error code to Node.js!
+    On Error Resume Next
+    session.findById("wnd[0]/tbar[0]/okcd").text = "/nex"
+    session.findById("wnd[0]").sendVKey 0
+    WScript.Sleep 1000
+    WScript.Quit(1) 
 End If
 
 fieldId = FindFieldByIdFragment(session.findById("wnd[0]"), "PASSWORD_EXT-PASSWORD2")
 If fieldId <> "" Then 
     session.findById(fieldId).text = argTargetPass
     WScript.Echo "  -> Injected Password 2!"
+Else
+    WScript.Echo "  -> ERROR: Could not find Password 2 box."
+    
+    ' 🛡️ GUARDRAIL
+    On Error Resume Next
+    session.findById("wnd[0]/tbar[0]/okcd").text = "/nex"
+    session.findById("wnd[0]").sendVKey 0
+    WScript.Sleep 1000
+    WScript.Quit(1)
 End If
 
 WScript.Echo "SCOUT: Hunting User Type by ID Fragment..."

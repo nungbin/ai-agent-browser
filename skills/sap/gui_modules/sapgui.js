@@ -12,9 +12,6 @@ module.exports = async (parsed, context) => {
     
     // ======================================================================
     // 🌟 THE CATCH-ALL NAME NET 🌟
-    // Small AIs frequently mix up "program_name" and "structure_name".
-    // This looks at EVERY possible key to find the name we want!
-    // ======================================================================
     let aiNameFallback = parsed.structure_name || parsed.structureName || parsed.program_name || parsed.programName || parsed.name || '';
     
     let programName = String(parsed.program_name || aiNameFallback).toUpperCase().trim();
@@ -37,8 +34,7 @@ module.exports = async (parsed, context) => {
         return await bot.sendMessage(chatId, "⚠️ **Offline:** The Surface Pro robot is not currently connected.", { parse_mode: 'Markdown' });
     }
 
-    // 🌟 NEW: Determine which VBScript file to trigger based on T-Code!
-    let vbsFileToRun = 'surgeon.vbs'; // Default for SU01
+    let vbsFileToRun = 'surgeon.vbs';
     if (tcode === 'SE38') vbsFileToRun = 'se38_creator.vbs';
     if (tcode === 'SE11') vbsFileToRun = 'se11_creator.vbs';
 
@@ -58,16 +54,15 @@ module.exports = async (parsed, context) => {
         } catch (e) { /* Ignore rate-limit errors */ }
     };
 
-    // 🌟 NEW: The payload now includes vbs_file and struct_name
     const payload = {
         username: process.env.SAP_USER,
         password: process.env.SAP_PASSWORD,
         tcode: tcode,
-        vbs_file: vbsFileToRun,     // <--- Added so Windows Robot knows what to run!
+        vbs_file: vbsFileToRun,
         target_user: targetUser,
         target_pass: initialPassword,
         program_name: programName,
-        struct_name: structureName  // <--- Fixed variable name to match client.js
+        struct_name: structureName
     };
 
     try {
@@ -78,13 +73,15 @@ module.exports = async (parsed, context) => {
             await updateTelegramConsole(statusMsg);
         });
 
+        // 🛡️ FIXED: Using local variables (programName, structureName, targetUser, initialPassword) 
+        // instead of looking inside the 'result' object!
         if (result.status === "Success") {
             if (tcode === 'SE38') {
-                await bot.sendMessage(chatId, `🎉 **Task Completed!**\n\n📜 **Program:** \`${result.program}\` was successfully created and activated!`, { parse_mode: 'Markdown' });
+                await bot.sendMessage(chatId, `🎉 **Task Completed!**\n\n📜 **Program:** \`${programName}\` was successfully created and activated!`, { parse_mode: 'Markdown' });
             } else if (tcode === 'SE11') {
-                await bot.sendMessage(chatId, `🎉 **Task Completed!**\n\n🗄️ **Structure:** \`${result.structure}\` was successfully created and activated!`, { parse_mode: 'Markdown' });
+                await bot.sendMessage(chatId, `🎉 **Task Completed!**\n\n🗄️ **Structure:** \`${structureName}\` was successfully created and activated!`, { parse_mode: 'Markdown' });
             } else {
-                await bot.sendMessage(chatId, `🎉 **Task Completed!**\n\n👤 **User:** \`${result.user}\`\n🔑 **Password:** \`${result.password}\``, { parse_mode: 'Markdown' });
+                await bot.sendMessage(chatId, `🎉 **Task Completed!**\n\n👤 **User:** \`${targetUser}\`\n🔑 **Password:** \`${initialPassword}\``, { parse_mode: 'Markdown' });
             }
         } else {
             await bot.sendMessage(chatId, `❌ **Task Failed:** The VBScript encountered an error.`, { parse_mode: 'Markdown' });
