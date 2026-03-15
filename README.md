@@ -32,7 +32,7 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
   ├── bot.js                  \# The Core Brain / Router / Wake-Word Detector            
   ├── google-credentials.json \# Service Account keys for Google APIs (Ignored in Git)            
   ├── prompts/              
-  │    └── system\_prompt.txt  \# The base instructions for the LLM              
+  │    └── system_prompt.txt  \# The base instructions for the LLM              
   ├── helpers/              
   │    ├── commandHandler.js  \# Telegram slash commands (/safe, /clear)              
   │    ├── cronHelper.js      \# Scheduling logic              
@@ -40,32 +40,32 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
   │    ├── voiceHelper.js     \# TTS Engine and STT API integrations           
   │    └── socketManager.js   \# WebSocket server for Windows RPA (Surface Pro)            
   ├── skills/                 \# DYNAMIC PLUG-N-PLAY CAPABILITIES              
-  │    ├── batch\_dashboard\_testing/ \# Web RPA skill for SAP Fiori Dashboard Batch Processing  
+  │    ├── batch_dashboard_testing/ \# Web RPA skill for SAP Fiori Dashboard Batch Processing  
   │    ├── cli/               \# e.g., skill.js and skill.md              
   │    ├── news/              
   │    ├── sap/              
   │    │    ├── skill.js      \# Main SAP routing switchboard            
   │    │    ├── skill.md      \# Instructions for the AI regarding SAP JSON schemas          
-  │    │    ├── gui\_modules/  \# Windows RPA WebSocket modules          
+  │    │    ├── gui_modules/  \# Windows RPA WebSocket modules          
   │    │    │    └── sapgui.js            
-  │    │    ├── rfc\_modules/  \# node-rfc headless extraction modules          
-  │    │    └── rest\_modules/ \# HTTP/OData extraction modules          
+  │    │    ├── rfc_modules/  \# node-rfc headless extraction modules          
+  │    │    └── rest_modules/ \# HTTP/OData extraction modules          
   │    ├── sheets/              
   │    │    ├── skill.js      \# Switchboard for sheet aliasing            
   │    │    └── modules/            
   │    │         └── grocery.js \# Handles AppSheet logic & Telegram UI buttons            
   │    ├── weather/              
-  │    └── write\_file/           
+  │    └── write_file/           
   ├── ui5-apps/               \# 🌐 ENTERPRISE FRONTENDS & RPA TRAINING GYM    
   │    └── dashboard/         \# SAP Fiori UI5 App (Dynamic Fragments & JSON Binding)    
-  ├── windows\_robot/          \# 🪟 Windows RPA Client (Copy this folder to Surface Pro)          
+  ├── windows_robot/          \# 🪟 Windows RPA Client (Copy this folder to Surface Pro)          
   │    ├── client.js          \# Listens for payloads; runs dynamic VBScripts AND Puppeteer Chrome automation          
   │    ├── surgeon.vbs        \# VBScript that physically drives SAP GUI (SU01)          
-  │    ├── se38\_creator.vbs   \# VBScript for headless ABAP program injection (SE38)        
-  │    ├── se11\_creator.vbs   \# VBScript for Data Dictionary structure generation (SE11)      
+  │    ├── se38_creator.vbs   \# VBScript for headless ABAP program injection (SE38)        
+  │    ├── se11_creator.vbs   \# VBScript for Data Dictionary structure generation (SE11)      
   │    ├── package.json       \# Node dependencies for the client          
   │    └── package-lock.json            
-  ├── sap\_abap\_sources/       \# Documentation & ABAP Code for the SAP Backend              
+  ├── sap_abap_sources/       \# Documentation & ABAP Code for the SAP Backend              
   ├── stt-microservice/       \# Source code backup for the Whisper STT LXC              
   ├── logs/                   \# Auto-generated daily logs (Ignored in Git)              
   ├── data/                   \# Persistent memory and settings (Ignored in Git)              
