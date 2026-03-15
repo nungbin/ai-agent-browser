@@ -10,7 +10,7 @@ const commandHandler = require('./helpers/commandHandler');
 const voiceHelper = require('./helpers/voiceHelper');
 const cronHelper = require('./helpers/cronHelper');
 const logger = require('./helpers/logger');
-const socketManager = require('./helpers/socketManager'); // <-- 🌟 NEW: Import Socket Manager
+const socketManager = require('./helpers/socketManager'); // <-- 🌟 Import Socket Manager
 
 process.on('uncaughtException', (err) => logger.error('CRITICAL EXCEPTION', err.stack));
 process.on('unhandledRejection', (reason) => logger.error('UNHANDLED REJECTION', reason.stack || reason));
@@ -166,7 +166,9 @@ bot.on('callback_query', async (query) => {
             try {
                 const parsed = { output: { action: 'button_click', raw_data: data } };
                 const escapeHTML = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const context = { bot, chatId, state, processPipeline, escapeHTML, messageId: msgId };
+                
+                // 🌟 FIX 1: Added socketManager here so it works if triggered by a button!
+                const context = { bot, chatId, state, processPipeline, escapeHTML, messageId: msgId, socketManager };
                 
                 if (typeof activeSkills[skillName].execute === 'function') {
                     await activeSkills[skillName].execute(parsed, context);
@@ -278,8 +280,8 @@ async function processPipeline(chatId, userText, isCron = false, isVoiceInput = 
             try {
                 const escapeHTML = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 
-                // Passed usePersona to context so skills know if they should talk!
-                const result = await activeSkills[intent].execute(dec, { bot, chatId, state, processPipeline, escapeHTML, usePersona: isPersonaOn });
+                // 🌟 FIX 2: Added socketManager here so the skill can access it!
+                const result = await activeSkills[intent].execute(dec, { bot, chatId, state, processPipeline, escapeHTML, usePersona: isPersonaOn, socketManager });
                 
                 clearInterval(skillProg.interval);
                 bot.deleteMessage(chatId, skillProg.mid).catch(()=>{});
@@ -352,7 +354,7 @@ async function startSystem() {
     commandHandler.register(bot, state);
     cronHelper.init((chatId, task, isCron) => processPipeline(chatId, task, isCron));
     
-    // 🌟 NEW: Start the Socket Manager to listen for the Windows Robot!
+    // 🌟 Start the Socket Manager to listen for the Windows Robot!
     socketManager.initSocketServer();
     
     // Dynamically display whether Persona is ON or OFF at startup
