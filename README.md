@@ -40,6 +40,9 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
   │    ├── voiceHelper.js     # TTS Engine and STT API integrations           
   │    └── socketManager.js   # WebSocket server for Windows RPA (Surface Pro)            
   ├── skills/                 # DYNAMIC PLUG-N-PLAY CAPABILITIES              
+  │    ├── abap_developer/    # 🛠️ Headless MCP ABAP Agent (Logic & Gemini Pacing)
+  │    │    ├── skill.js      # Single-Pass execution & Rate Limit protection
+  │    │    └── skill.md      # Tool definitions for the AI Architect  
   │    ├── batch_dashboard_testing/ # Web RPA skill for SAP Fiori Dashboard Batch Processing  
   │    ├── cli/               # e.g., skill.js and skill.md              
   │    ├── news/              
@@ -76,6 +79,7 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
 
 You can send these requests to the bot via **Text Message** or by holding down the **Microphone Button** to send a Voice Note!
 
+* **Headless ABAP Agent:** `Veronica, use your ABAP agent to create an SE11 structure named ZST_TEST_MCP with two fields: ID (INT4) and NAME (CHAR40).`
 * **CLI Skill:** `run pwd` or `cd sandbox` or `ls -la`  
 * **Write File Skill:** `write a python script named hello.py that prints hello world`  
 * **Weather Skill:** `what is the weather in London?`  
@@ -91,7 +95,13 @@ You can send these requests to the bot via **Text Message** or by holding down t
 
 ## **🛠️ Installation & Setup (Main Node.js LXC)**
 
-### **1. SAP C++ SDK Prerequisites (Linux)**
+### **1. SAP ADT & MCP Prerequisites**
+The ABAP Architect requires the Model Context Protocol SDK and the ADT Core bridge.
+```bash
+npm install @modelcontextprotocol/sdk @mcp-abap-adt/core
+```
+
+### **2. SAP C++ SDK Prerequisites (Linux)**
 
 To use the SAP RFC module, you must download (please check SAP Note 2573790) the proprietary SAP NW RFC SDK (7.50+) from the SAP Support Portal and install it on your Linux container:
 
@@ -101,11 +111,11 @@ sudo nano /etc/ld.so.conf.d/nwrfcsdk.conf # Add path to lib directory
 sudo ldconfig
 ```
 
-### **2. Google Sheets API Prerequisites**
+### **3. Google Sheets API Prerequisites**
 
 Go to the Google Cloud Console, enable the **Google Sheets API**, and create a Service Account. Download the JSON key file, rename it to `google-credentials.json`, and place it in the root directory. Share your target Google Sheet with the Service Account email address as an Editor.
 
-### **3. Clone & Install**
+### **4. Clone & Install**
 
 ```bash
 git clone <repository_url>  
@@ -114,7 +124,7 @@ npm install
 npm install socket.io # Required for the Windows Robot connection
 ```
 
-### **4. Configure Environment variables**
+### **5. Configure Environment variables**
 
 Rename `.env.example` to `.env` (or create a new `.env` file) and populate it:
 
@@ -174,13 +184,13 @@ GEMINI_API_KEY=put_your_free_google_ai_studio_key_here
 MCP_ABAP_COMMAND=node ./node_modules/@mcp-abap-adt/core/bin/mcp-abap-adt.js
 ```
 
-### **5. Start the bot**
+### **6. Start the bot**
 
 ```bash
 node bot.js --debug
 ```
 
-### **6. UI5 Dashboard & Google Sheets Database Setup**
+### **7. UI5 Dashboard & Google Sheets Database Setup**
 
 To run the decoupled SAPUI5 frontend and its serverless Apps Script backend:
 
