@@ -12,13 +12,46 @@ const socket = io(linuxBrainIP, { reconnection: true });
 socket.on('connect', () => console.log("✅ LINK ESTABLISHED!"));
 
 socket.on('execute_sap', async (payload) => {
+    // 🌐 HANDLE WEB RPA (PUPPETEER)
     if (payload.type === 'BATCH_DASHBOARD_TESTING') {
         await runBrowserAutomation(payload, socket);
         return;
     }
-    const surgeon = spawn('cscript', ['//nologo', 'surgeon.vbs', payload.username, payload.password, payload.tcode, payload.target_user, payload.target_pass]);
-    surgeon.stdout.on('data', (data) => socket.emit('status_update', data.toString().trim()));
-    surgeon.on('close', (code) => socket.emit('task_complete', { status: code === 0 ? "Success" : "Failed" }));
+
+    // 🪟 HANDLE DESKTOP RPA (VBSCRIPT)
+    // We determine which .vbs to run based on the payload.
+    // If payload.vbs_file is provided, use it. Default to 'surgeon.vbs'.
+    const scriptFile = payload.vbs_file || 'surgeon.vbs';
+    
+    // Prepare arguments for VBScript. 
+    // We use an array so we can add as many as the specific script needs.
+    const args = ['//nologo', scriptFile, payload.username, payload.password, payload.tcode];
+    
+    // Append extra params if they exist (for SU01 / SE38 / SE11)
+    if (payload.target_user) args.push(payload.target_user);
+    if (payload.target_pass) args.push(payload.target_pass);
+    if (payload.program_name) args.push(payload.program_name); // For SE38
+    if (payload.struct_name) args.push(payload.struct_name);   // For SE11
+
+    socket.emit('status_update', `Spawning VBS Surgeon: ${scriptFile} for ${payload.tcode}...`);
+
+    const surgeon = spawn('cscript', args);
+
+    surgeon.stdout.on('data', (data) => {
+        const output = data.toString().trim();
+        if (output) socket.emit('status_update', output);
+    });
+
+    surgeon.stderr.on('data', (data) => {
+        socket.emit('status_update', `⚠️ VBS Error: ${data.toString()}`);
+    });
+
+    surgeon.on('close', (code) => {
+        socket.emit('task_complete', { 
+            status: code === 0 ? "Success" : "Failed",
+            script: scriptFile 
+        });
+    });
 });
 
 async function runBrowserAutomation(batchData, socket) {
@@ -67,7 +100,6 @@ async function runBrowserAutomation(batchData, socket) {
             const task = tasks[i];
             socket.emit('status_update', `[${i+1}/${tasks.length}] Updating ${task.year}...`);
 
-            // 🌟 1. RESTORED: Open the Navigation menu so the year is actually visible!
             try {
                 await physicalClick("Navigation");
                 await new Promise(r => setTimeout(r, 1000)); 
@@ -75,17 +107,12 @@ async function runBrowserAutomation(batchData, socket) {
                 console.log("Navigation button not found, assuming sidebar is already open.");
             }
 
-            // 2. Click the Year
             await physicalClick(task.year.toString());
-            
-            // 🌟 3. RESTORED: Wait for the year's data to load from the SAP backend
             socket.emit('status_update', `Waiting for ${task.year} data to load...`);
             await new Promise(r => setTimeout(r, 2500)); 
 
-            // 4. Edit Mode
             await physicalClick("Edit Mode");
             
-            // 5. Visual Form Parser
             socket.emit('status_update', `Locating 'Job title' on screen...`);
             const inputCoords = await page.evaluate(() => {
                 const elements = Array.from(document.querySelectorAll('*'));
@@ -97,7 +124,6 @@ async function runBrowserAutomation(batchData, socket) {
                 if (targetLabel) {
                     const labelRect = targetLabel.getBoundingClientRect();
                     const labelCenterY = labelRect.top + labelRect.height / 2;
-
                     const inputs = Array.from(document.querySelectorAll('input')).filter(i => i.offsetWidth > 0);
                     
                     let closestInput = null;
@@ -107,7 +133,6 @@ async function runBrowserAutomation(batchData, socket) {
                         const iRect = input.getBoundingClientRect();
                         const iCenterY = iRect.top + iRect.height / 2;
                         const yDiff = Math.abs(iCenterY - labelCenterY);
-                        
                         if (yDiff < 30 && iRect.left > labelRect.left) {
                             if (yDiff < minDiff) {
                                 minDiff = yDiff;
@@ -127,29 +152,23 @@ async function runBrowserAutomation(batchData, socket) {
 
             if (!inputCoords.found) throw new Error("Could not visually match the Job Title input box.");
 
-            // 6. Append Mode Typing Logic
             await page.mouse.click(inputCoords.x, inputCoords.y, { clickCount: 1 }); 
             await new Promise(r => setTimeout(r, 200));
             
-            // Select All, move to end
             await page.keyboard.down('Control');
             await page.keyboard.press('a');
             await page.keyboard.up('Control');
             await page.keyboard.press('ArrowRight');
             await new Promise(r => setTimeout(r, 100));
             
-            // Type the space and the text
             await page.keyboard.type(" " + task.jobTitle, { delay: 60 }); 
             
-            // Force Fiori Data Sync
             await page.keyboard.press('Enter');
             await page.keyboard.press('Tab');
             await new Promise(r => setTimeout(r, 1000));
 
-            // 7. Save
             await physicalClick("Save to Sheet");
             
-            // 8. Verify
             try {
                 await page.waitForFunction(() => {
                     const toast = document.querySelector('.sapMMessageToast');
@@ -173,6 +192,6 @@ async function runBrowserAutomation(batchData, socket) {
         await page.screenshot({ path: screenPath });
         socket.emit('status_update', `❌ Error: ${err.message}`);
         socket.emit('task_complete', { status: "Failed", error: err.message });
-        await browser.close();
+        if (browser) await browser.close();
     }
 }
