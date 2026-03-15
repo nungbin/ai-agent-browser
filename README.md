@@ -27,6 +27,7 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
 
 ## **📂 Project Structure**
 
+```
 /agent-browser              
   ├── bot.js                  \# The Core Brain / Router / Wake-Word Detector            
   ├── google-credentials.json \# Service Account keys for Google APIs (Ignored in Git)            
@@ -69,6 +70,7 @@ An autonomous Node.js Telegram bot that acts as a Linux System Administrator, a 
   ├── logs/                   \# Auto-generated daily logs (Ignored in Git)              
   ├── data/                   \# Persistent memory and settings (Ignored in Git)              
   └── sandbox/                \# Workspace for AI-generated code (Ignored in Git)
+```
 
 ## **🗣️ Usage Examples (Text & Voice)**
 
