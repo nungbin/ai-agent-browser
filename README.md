@@ -89,9 +89,10 @@ You can send these requests to the bot via **Text Message** or by holding down t
 * **Sheets Skill:** `add apples to the grocery list` (Will trigger dynamic UI buttons)  
 * **Wake-Word Persona:** `Veronica, add apples to the grocery list` (Will reply conversationally)  
 * **SAP Skill (RFC):** `get me the latest SAP shortdumps`  
-* **SAP Skill (RFC):** `Check the SLG1 logs for object ZAGENT subobject TEST`  
+* **SAP Skill (RFC):** `Check application log in SAP`  
 * **SAP Skill (Desktop GUI):** `Run tcode su01 to create user TEST1` (Triggers Windows Robot over WebSockets)  
-* **SAP Skill (Desktop GUI):** `Run se38 to create a program named ZHELLO_WORLD` (Injects ABAP headlessly)  
+* **SAP Skill (Desktop GUI):** `Run se38 to create a program named ZTESTBOT` (Injects ABAP headlessly)  
+* **SAP Skill (Desktop GUI):** `Run SE11 to create a structure named ZSTR_TEST1` (Injects ABAP headlessly)  
 * **Web RPA Skill (Puppeteer):** `Veronica, process the RPA queue` (Drives Chrome locally on the Windows Robot to automate Fiori dashboards based on Google Sheets queue).  
 * **TTS Generation:** `say "Initialization complete"` in a voice note
 
