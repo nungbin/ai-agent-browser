@@ -83,7 +83,7 @@ You can send these requests to the bot via **Text Message** or by holding down t
 
 * **Headless ABAP Agent:** `Veronica, use your ABAP agent to create an SE11 structure named ZST_TEST_MCP with two fields: ID (INT4) and NAME (CHAR40).`
 * **CLI Skill:** `run pwd` or `cd sandbox` or `ls -la`  
-* **Write File Skill:** `write a python script named hello.py that prints hello world`  
+* **Write File Skill:** `Write a c program named hello.c which prints hello world`  
 * **Weather Skill:** `what is the weather in London?`  
 * **News Skill:** `get me the latest tech news`  
 * **Sheets Skill:** `add apples to the grocery list` (Will trigger dynamic UI buttons)  
